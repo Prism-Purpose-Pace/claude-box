@@ -1,0 +1,111 @@
+# Gate for the claude-box host (box/).
+#
+# - Promotes the upstream `stable` Claude Code version to box/claude-version
+#   only after it completed a full headless turn on an emulated CPU without AVX
+#   (QEMU -cpu Westmere, same instruction-set class as the Celeron N3150).
+# - Weekly: updates box/flake.lock (nixpkgs 26.05, disko, sops-nix).
+# - Builds the complete system and runs the VM test before anything is committed.
+#
+# The box itself pulls main once a day and re-runs the smoke test on its real CPU
+# before switching, so a broken commit can never be activated there.
+name: box
+
+on:
+  schedule:
+    - cron: '17 */6 * * *' # promote new stable Claude Code versions
+    - cron: '43 2 * * 1' # Monday: also update flake inputs
+  workflow_dispatch:
+    inputs:
+      update-inputs:
+        description: 'Also run nix flake update for box/'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ['box/**', '.github/workflows/box.yaml']
+  pull_request:
+    paths: ['box/**', '.github/workflows/box.yaml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: box-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: ./.github/actions/setup-nix
+
+      - name: Enable KVM for the VM test
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Update flake inputs
+        if: github.event.schedule == '43 2 * * 1' || inputs.update-inputs
+        run: nix flake update --flake ./box
+
+      - name: Propose new Claude Code version
+        id: candidate
+        run: |
+          current=$(cat box/claude-version)
+          candidate=$(cat stable)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
+          rejected=$(cat box/claude-rejected 2>/dev/null || true)
+          if [ "$candidate" = "$rejected" ]; then
+            echo "Claude Code $candidate was already rejected, skipping"
+          elif [ "$current" != "$candidate" ]; then
+            echo "$candidate" > box/claude-version
+            echo "Testing Claude Code $candidate (box currently on $current)"
+          fi
+
+      - name: Smoke test on emulated CPU without AVX
+        id: smoke
+        continue-on-error: true
+        run: |
+          qemu=$(nix build --no-link --print-out-paths --inputs-from ./box nixpkgs#qemu-user)
+          claude=$(nix build --no-link --print-out-paths ./box#claude)
+          smoke=$(nix build --no-link --print-out-paths ./box#smoke-test)
+          SMOKE_PREFIX="$qemu/bin/qemu-x86_64 -cpu Westmere" \
+            "$smoke/bin/claude-smoke-test" "$claude/bin/.claude-wrapped"
+
+      - name: Keep previous Claude Code version
+        if: steps.smoke.outcome == 'failure'
+        run: |
+          echo "::warning::Claude Code ${{ steps.candidate.outputs.candidate }} failed the non-AVX smoke test, staying on ${{ steps.candidate.outputs.current }}"
+          echo "${{ steps.candidate.outputs.current }}" > box/claude-version
+          echo "${{ steps.candidate.outputs.candidate }}" > box/claude-rejected
+
+      - name: Build system
+        run: nix build -L ./box#toplevel
+
+      - name: VM test
+        run: nix build -L ./box#checks.x86_64-linux.vm
+
+      - name: Commit
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'
+          git add box/claude-version box/flake.lock box/claude-rejected 2>/dev/null || git add box/claude-version box/flake.lock
+          if git diff --staged --quiet; then
+            echo "Nothing to promote"; exit 0
+          fi
+          git commit -m "box: promote claude $(cat box/claude-version) / update inputs"
+          for _ in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Report rejected version
+        if: steps.smoke.outcome == 'failure'
+        run: exit 1 # failed run => GitHub notification mail

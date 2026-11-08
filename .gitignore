@@ -4,3 +4,6 @@ sources.old.json
 .direnv
 .pre-commit-config.yaml
 test-linux.sh
+# never commit plaintext secrets or result links
+box/secrets/*.plain
+box/result*
