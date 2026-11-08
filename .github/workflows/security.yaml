@@ -1,0 +1,121 @@
+# Security checks.
+#
+# Blocking (every push / PR):
+#   - gitleaks: no secrets in the Git history
+#   - zizmor:   no insecure GitHub Actions patterns (severity low and above)
+#
+# Weekly report (Sunday, after the Monday-early flake update would be too late):
+#   - sbomnix: CycloneDX + SPDX SBOM of the complete box system, kept as artifact
+#   - grype:   CVE scan of that SBOM. grype matches by version and cannot see
+#              patches nixpkgs backports, so many matches are false positives.
+#              The run fails (= mail) only when a NEW critical finding appears;
+#              it is then added to box/security/known-critical.txt.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 0'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  secrets:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-nix
+      - name: gitleaks
+        run: nix run --inputs-from ./box nixpkgs#gitleaks -- git . --no-banner --redact --config .gitleaks.toml
+
+  workflows:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: nix run --inputs-from ./box nixpkgs#zizmor -- --min-severity low --format plain .github/workflows/
+
+  sbom:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write # updates box/security/known-critical.txt
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
+
+      - name: SBOM of the box system
+        run: |
+          system=$(nix build --no-link --print-out-paths ./box#toplevel)
+          mkdir -p report
+          nix run --inputs-from ./box nixpkgs#sbomnix -- "$system" \
+            --cdx report/sbom.cdx.json --spdx report/sbom.spdx.json --csv report/sbom.csv
+
+      - name: CVE scan
+        run: |
+          nix run --inputs-from ./box nixpkgs#grype -- sbom:report/sbom.cdx.json -o json > report/grype.json
+          nix run --inputs-from ./box nixpkgs#grype -- sbom:report/sbom.cdx.json -o table > report/grype.txt || true
+          jq -r '.matches[] | select(.vulnerability.severity=="Critical")
+                 | "\(.artifact.name) \(.vulnerability.id)"' report/grype.json | sort -u > report/critical.txt
+          comm -13 box/security/known-critical.txt report/critical.txt > report/new-critical.txt
+          {
+            echo "### CVE scan of the box system"
+            jq -r '[.matches[].vulnerability.severity] | group_by(.) | map("- \(.[0]): \(length)") | .[]' report/grype.json
+            echo
+            echo "New critical findings since last report:"
+            if [ -s report/new-critical.txt ]; then sed 's/^/- /' report/new-critical.txt; else echo "- none"; fi
+            echo
+            echo "Version-based matching: verify against the nixpkgs package before acting."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-and-cve-report
+          path: report/
+          retention-days: 90
+
+      - name: Record new critical findings
+        id: record
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ ! -s report/new-critical.txt ]; then exit 0; fi
+          echo "new=true" >> "$GITHUB_OUTPUT"
+          sort -u box/security/known-critical.txt report/critical.txt -o box/security/known-critical.txt
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git add box/security/known-critical.txt
+          git commit -m "security: record $(wc -l < report/new-critical.txt) new critical CVE finding(s)"
+          for _ in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Alert on new critical findings
+        if: steps.record.outputs.new == 'true'
+        run: |
+          echo "::error::New critical CVE findings, see the job summary and the sbom-and-cve-report artifact"
+          exit 1

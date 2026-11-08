@@ -1,0 +1,6 @@
+# zizmor configuration (https://docs.zizmor.sh/configuration/)
+rules:
+  # The `$/` self-repository syntax is new (2026) and not yet understood by
+  # actionlint; keep the `./` form until both tools and GitHub agree.
+  self-repository:
+    disable: true

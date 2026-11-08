@@ -3,6 +3,8 @@ on:
   schedule:
     - cron: '0 * * * *' # Run every hour
   workflow_dispatch:
+permissions: {}
+
 jobs:
   update-sources:
     runs-on: ubuntu-latest
@@ -10,9 +12,9 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-nix
         with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
       - id: update
         run: |
           VERSION=$(./update.nu | tail -1)
@@ -21,8 +23,19 @@ jobs:
       - run: 'git config user.name github-actions[bot]'
       - run: 'git add -A'
       - name: Commit with version
+        env:
+          VERSION: ${{ steps.update.outputs.version }}
         run: |
           if ! git diff --staged --quiet; then
-            git commit -m "chore: update claude to ${{ steps.update.outputs.version }}"
+            git commit -m "chore: update claude to $VERSION"
           fi
-      - run: 'git push -u origin main'
+      - name: Push
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for _ in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            sleep 10
+          done
+          exit 1

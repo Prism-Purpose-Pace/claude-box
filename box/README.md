@@ -92,3 +92,15 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 - `claude` has no sudo. `admin` has passwordless sudo, protected by the SSH key.
 - Secrets are decrypted on the box with its SSH host key; only ciphertext is in Git.
 - The box pulls; nothing pushes to it, and no inbound port besides SSH (LAN) is open.
+
+## Security checks (`.github/workflows/security.yaml`)
+
+| Check | When | Effect |
+|---|---|---|
+| gitleaks (secrets in Git history) | every push / PR | blocks |
+| zizmor (insecure workflow patterns, `.github/zizmor.yml`) | every push / PR | blocks |
+| sbomnix SBOM (CycloneDX + SPDX) + grype CVE scan of the box system | Sundays | report artifact; fails (mail) only on a **new** critical finding, which is then added to `security/known-critical.txt` |
+
+grype matches by version number and cannot see fixes that nixpkgs backports as
+patches, so check a finding against the nixpkgs package before acting. Real fixes
+arrive with the weekly flake update in `box.yaml`.

@@ -26,8 +26,7 @@ on:
   pull_request:
     paths: ['box/**', '.github/workflows/box.yaml']
 
-permissions:
-  contents: write
+permissions: {}
 
 concurrency:
   group: box-${{ github.ref }}
@@ -36,9 +35,13 @@ concurrency:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # commits box/claude-version, flake.lock, versions/
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: ./.github/actions/setup-nix
 
@@ -79,10 +82,13 @@ jobs:
 
       - name: Keep previous Claude Code version
         if: steps.smoke.outcome == 'failure'
+        env:
+          CANDIDATE: ${{ steps.candidate.outputs.candidate }}
+          CURRENT: ${{ steps.candidate.outputs.current }}
         run: |
-          echo "::warning::Claude Code ${{ steps.candidate.outputs.candidate }} failed the non-AVX smoke test, staying on ${{ steps.candidate.outputs.current }}"
-          echo "${{ steps.candidate.outputs.current }}" > box/claude-version
-          echo "${{ steps.candidate.outputs.candidate }}" > box/claude-rejected
+          echo "::warning::Claude Code $CANDIDATE failed the non-AVX smoke test, staying on $CURRENT"
+          echo "$CURRENT" > box/claude-version
+          echo "$CANDIDATE" > box/claude-rejected
 
       - name: Build system
         run: nix build -L ./box#toplevel
@@ -101,7 +107,10 @@ jobs:
 
       - name: Commit
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git config user.name 'github-actions[bot]'
           git add -A versions
