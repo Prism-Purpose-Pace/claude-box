@@ -27,14 +27,8 @@ if [ -n "$(git rev-list '@{u}..HEAD')" ]; then
   exit 1
 fi
 
-installer_ssh=(-i "$key" "${installer_ssh_opts[@]}")
-
-if ssh "${installer_ssh[@]}" -o BatchMode=yes -o ConnectTimeout=10 "root@$ip" true 2>/dev/null; then
-  echo "==> Installer accepts your key"
-else
-  echo "==> Authorising your key on the installer (enter the password you set with 'passwd')"
-  ssh-copy-id -i "$key.pub" "${installer_ssh[@]}" "root@$ip" >/dev/null
-fi
+trap installer_disconnect EXIT
+installer_connect "$ip" "$key"
 
 echo "==> Checking the target disk"
 # The disk disko will wipe, resolved on the installer (handles /dev/disk/by-id/…).
@@ -59,9 +53,9 @@ nixos-anywhere \
   --build-on remote \
   --extra-files "$keydir" \
   -i "$key" \
-  --ssh-option UserKnownHostsFile=/dev/null \
-  --ssh-option StrictHostKeyChecking=no \
+  --ssh-option "${installer_mux[1]}" \
   --target-host "root@$ip"
+installer_disconnect
 
 echo "==> Trusting the box's host key"
 ssh-keygen -R claude-box.local >/dev/null 2>&1 || true

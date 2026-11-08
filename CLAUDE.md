@@ -58,4 +58,6 @@ All of these workflows commit straight to `main`.
 
 - Nix is formatted with nixfmt and must pass statix and deadnix. JSON/YAML/Markdown use oxfmt (`.oxfmtrc.jsonc`: tabs, single quotes). `update.nu` uses nufmt.
 - GitHub Actions are pinned to commit SHAs with a version comment, use `persist-credentials: false`, and set least-privilege `permissions:`. zizmor (`--min-severity low`) blocks CI otherwise; config is in `.github/zizmor.yml`.
+- A push to `main` is root on the box within a day. In `box.yaml` the `gate` job (Nix builds, third-party actions, also runs on same-repository PRs) is read-only and hands a patch to the `commit` job, the only one with `contents: write`. Keep that split, and keep Renovate from auto-merging GitHub Actions updates.
+- `install.sh` never sends anything to the installer over an unverified connection: `installer_connect` (`box/scripts/lib.sh`) pins the host key after the user compares its fingerprint with the installer console, and nixos-anywhere runs over that master connection (`ControlPath`), because its own `StrictHostKeyChecking=no` cannot be overridden.
 - The unfree allowance is limited to the package name `claude` (`allowUnfreePredicate`). The overlay instead relies on the consumer's own nixpkgs config.

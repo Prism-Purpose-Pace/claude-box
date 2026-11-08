@@ -25,13 +25,14 @@
 			matchPackageNames: ['nixpkgs'],
 			schedule: ['every weekend'],
 		},
-		// Auto-merge for GitHub Actions
+		// GitHub Actions: never auto-merge. Workflows that push to main run these
+		// actions, and main is deployed to the box as root, so a moved upstream tag
+		// (a compromised action) must not reach main without a human look.
+		// minimumReleaseAge only delays the PR; tag dates can be forged.
 		{
 			matchManagers: ['github-actions'],
-			matchUpdateTypes: ['minor', 'patch', 'pin', 'digest'],
-			automerge: true,
-			automergeType: 'pr',
-			automergeStrategy: 'squash',
+			automerge: false,
+			minimumReleaseAge: '7 days',
 		},
 		// Group flake.lock updates
 		{
