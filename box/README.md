@@ -14,7 +14,7 @@ box.yaml (every 6 h; Mondays also nixpkgs/disko/sops-nix)
    │    pass → box/claude-version      fail → box/claude-rejected + mail
    ├─ build the whole system, run the NixOS VM test
    ├─ prune versions/ to the newest 20
-   └─ commit to main
+   └─ commit to main (separate `commit` job; the job above runs read-only)
 release.yaml (Tuesdays)  next NixOS release (YY.05/YY.11) once out: build + VM test → commit
 installer.yaml (monthly / on change)  installer ISO → GitHub release "installer"
         │
@@ -36,19 +36,19 @@ problems that only appear later at runtime; for those, roll back (see below).
 
 ## Layout
 
-| Path                                        | Purpose                                                                            |
-| ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `../package.nix`, `../package-fhs.nix`      | Claude Code binary wrapper; FHS variant used on the box (agent teams)              |
-| `../update.nu`, `../versions/`, `../stable` | release tracking, fed by `update.yaml`                                             |
-| `flake.nix`                                 | host config, packages `claude` / `smoke-test` / `toplevel`, VM test, Mac dev shell |
-| `claude-version` / `claude-rejected`        | deployed version / last version rejected by CI (both written by CI)                |
-| `hosts/claude-box/`                         | hardware, disk layout, SSH keys, host settings                                     |
-| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access, notifications    |
-| `installer/`                                | installer ISO (your key preset, `claude-installer.local`)                          |
-| `pkgs/`                                     | smoke test + mock Messages API                                                     |
-| `tests/vm.nix`                              | VM test run by CI                                                                  |
-| `scripts/`                                  | Mac: `setup.sh` (= `bootstrap.sh` + `install.sh`), `flash-usb.sh`, `repo-setup.sh` |
-| `secrets/secrets.yaml`                      | sops-encrypted to the box's SSH host key, created by `bootstrap.sh`                |
+| Path                                        | Purpose                                                                                                        |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `../package.nix`, `../package-fhs.nix`      | Claude Code binary wrapper; FHS variant used on the box (agent teams)                                          |
+| `../update.nu`, `../versions/`, `../stable` | release tracking, fed by `update.yaml`                                                                         |
+| `flake.nix`                                 | host config, packages `claude` / `smoke-test` / `toplevel`, VM test, Mac dev shell                             |
+| `claude-version` / `claude-rejected`        | deployed version / last version rejected by CI (both written by CI)                                            |
+| `hosts/claude-box/`                         | hardware, disk layout, SSH keys, host settings                                                                 |
+| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access, notifications                                |
+| `installer/`                                | installer ISO (your key preset, `claude-installer.local`)                                                      |
+| `pkgs/`                                     | smoke test + mock Messages API                                                                                 |
+| `tests/vm.nix`                              | VM test run by CI                                                                                              |
+| `scripts/`                                  | Mac: `setup.sh` (= `bootstrap.sh` + `install.sh`), `flash-usb.sh`, `repo-setup.sh`; shared helpers in `lib.sh` |
+| `secrets/secrets.yaml`                      | sops-encrypted to the box's SSH host key, created by `bootstrap.sh`                                            |
 
 ## First install
 
@@ -95,6 +95,14 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 - `claude` has no sudo. `admin` has passwordless sudo, protected by the SSH key.
 - Secrets are decrypted on the box with its SSH host key; only ciphertext is in Git.
 - The box pulls; nothing pushes to it, and no inbound port besides SSH (LAN) is open.
+- A push to `main` reaches the box as root within a day, so CI guards `main`:
+  the `box.yaml` job that builds and runs third-party code has a read-only token
+  and hands a patch to a separate `commit` job; Renovate never auto-merges
+  GitHub Actions updates.
+- `install.sh` pins the installer's SSH host key after you compare its
+  fingerprint with the ZBOX screen; nothing is sent over an unverified connection.
+- Every commit runs formatters, linters and a gitleaks secret scan (pre-commit
+  hooks, repeated in CI).
 
 ## Security checks (`.github/workflows/security.yaml`)
 
