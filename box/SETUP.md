@@ -98,6 +98,13 @@ ssh claude-box-admin sudo claude-box-notify "claude-box" "test"  # should reach 
 ssh claude-box-admin systemctl list-timers 'claude-box-*'
 ```
 
+Claude Code settings and the herdr config are set up automatically from
+`box/home/claude/`. The herdr plugins need your approval once:
+
+```sh
+ssh claude-box -t claude-box-herdr-plugins   # shows each plugin's trust preview
+```
+
 From now on nothing is manual. What happens automatically is described in
 [README.md](README.md#how-updates-flow).
 

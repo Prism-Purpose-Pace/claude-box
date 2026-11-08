@@ -46,6 +46,7 @@ problems that only appear later at runtime; for those, roll back (see below).
 | `claude-version` / `claude-rejected`        | deployed version / last version rejected by CI (both written by CI)                                            |
 | `hosts/claude-box/`                         | hardware, disk layout, SSH keys, host settings                                                                 |
 | `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access, notifications                                |
+| `home/claude/`                              | starting config of user `claude` (Claude Code settings, herdr), copied if missing                              |
 | `installer/`                                | installer ISO (your key preset, `claude-installer.local`)                                                      |
 | `pkgs/`                                     | smoke test + mock Messages API                                                                                 |
 | `tests/vm.nix`                              | VM test run by CI                                                                                              |
@@ -86,6 +87,8 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 | Enable NetBird              | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix`                                                                 |
 | Reinstall from scratch      | `bootstrap.sh --new-host-key` (new host key, secrets re-encrypted), then `setup.sh`                                                                                                |
 | Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                                                                                     |
+| Update herdr                | bump the tag of the `herdr` input in `flake.nix`, then `nix flake lock ./box`; the box compiles it (takes a while on the N3150)                                                    |
+| herdr plugins (reinstall)   | `ssh claude-box -t claude-box-herdr-plugins` (list in `modules/claude.nix`; approve each trust preview)                                                                            |
 | Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history` (`OK` / `REJECTED` / `SKIPPED` / `ROLLBACK`), `journalctl -u claude-box-upgrade`                                            |
 | Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)                                                                  |
 | Test notifications          | `ssh claude-box-admin sudo claude-box-notify "claude-box" "test"`                                                                                                                  |
