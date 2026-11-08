@@ -1,0 +1,15 @@
+# Read by editors and by shfmt (treefmt hook in dev/flake.nix).
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[{*.sh,*.bash,.envrc}]
+indent_style = space
+indent_size = 2
+# shfmt: `|| cmd` and `&& cmd` start the continuation line, as in the existing scripts.
+binary_next_line = true
+switch_case_indent = true

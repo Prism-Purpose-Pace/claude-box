@@ -15,8 +15,14 @@ keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
 pubkey="hosts/claude-box/ssh_host_ed25519_key.pub"
 min_disk=$((60 * 1000 * 1000 * 1000))
 
-[ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ] || { echo "No host key in $keydir - run bootstrap.sh first." >&2; exit 1; }
-[ -f secrets/secrets.yaml ] || { echo "No secrets - run bootstrap.sh first." >&2; exit 1; }
+[ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ] || {
+  echo "No host key in $keydir - run bootstrap.sh first." >&2
+  exit 1
+}
+[ -f secrets/secrets.yaml ] || {
+  echo "No secrets - run bootstrap.sh first." >&2
+  exit 1
+}
 if [ -n "$(git status --porcelain .)" ]; then
   echo "box/ has uncommitted changes - commit and push first, the box will pull from GitHub." >&2
   exit 1
@@ -61,10 +67,10 @@ nixos-anywhere \
 
 echo "==> Trusting the box's host key"
 ssh-keygen -R claude-box.local >/dev/null 2>&1 || true
-echo "claude-box.local $(cut -d' ' -f1,2 "$pubkey")" >> "$HOME/.ssh/known_hosts"
+echo "claude-box.local $(cut -d' ' -f1,2 "$pubkey")" >>"$HOME/.ssh/known_hosts"
 
 if ! grep -q "^Host claude-box$" "$HOME/.ssh/config" 2>/dev/null; then
-  cat >> "$HOME/.ssh/config" <<EOF
+  cat >>"$HOME/.ssh/config" <<EOF
 
 Host claude-box
   HostName claude-box.local

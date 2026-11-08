@@ -5,7 +5,7 @@
     let
       inherit (pkgs) lib;
       versionFiles = builtins.readDir ./versions;
-      versionNames = builtins.map (f: lib.removeSuffix ".json" f) (
+      versionNames = map (f: lib.removeSuffix ".json" f) (
         builtins.filter (f: lib.hasSuffix ".json" f) (builtins.attrNames versionFiles)
       );
       latestVersion = builtins.head (builtins.sort (a: b: builtins.compareVersions a b > 0) versionNames);
