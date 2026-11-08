@@ -14,7 +14,7 @@ let
       CLAUDE_CODE_OAUTH_TOKEN="$(< ${tokenPath})"
       export CLAUDE_CODE_OAUTH_TOKEN
     fi
-    exec ${pkgs.claude-code-box}/bin/claude "$@"
+    exec ${pkgs.claude-code-box-fhs}/bin/claude "$@"
   '';
 
   # Skip the first-run wizard so headless use works on a fresh box.

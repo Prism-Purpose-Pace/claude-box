@@ -40,6 +40,11 @@
             "${final.poppler-utils}/bin"
           ];
         };
+        # FHS wrapper: agent teams download helper binaries at runtime that expect
+        # /lib64/ld-linux-x86-64.so.2, which NixOS does not provide.
+        claude-code-box-fhs = final.callPackage ../package-fhs.nix {
+          claude-code = final.claude-code-box;
+        };
         claude-smoke-test = final.callPackage ./pkgs/smoke-test.nix { };
       };
 

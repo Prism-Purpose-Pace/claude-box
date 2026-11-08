@@ -90,11 +90,21 @@ jobs:
       - name: VM test
         run: nix build -L ./box#checks.x86_64-linux.vm
 
+      - name: Prune version archive
+        # Keep the newest 20 versions plus whatever `stable` and the box point to.
+        run: |
+          keep=$( (find versions -name '*.json' -printf '%f\n' | sed 's/\.json$//' | sort -V | tail -20; cat stable box/claude-version) | sort -uV)
+          for f in versions/*.json; do
+            v=$(basename "$f" .json)
+            grep -qxF "$v" <<<"$keep" || rm "$f"
+          done
+
       - name: Commit
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         run: |
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git config user.name 'github-actions[bot]'
+          git add -A versions
           git add box/claude-version box/flake.lock box/claude-rejected 2>/dev/null || git add box/claude-version box/flake.lock
           if git diff --staged --quiet; then
             echo "Nothing to promote"; exit 0
