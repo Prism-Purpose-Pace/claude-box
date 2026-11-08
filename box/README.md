@@ -14,7 +14,7 @@ box.yaml (every 6 h; Mondays also nixpkgs/disko/sops-nix)
    │    pass → box/claude-version      fail → box/claude-rejected + mail
    ├─ build the whole system, run the NixOS VM test
    ├─ prune versions/ to the newest 20
-   └─ commit to main (separate job, the only one with write access)
+   └─ commit to main
 release.yaml (Tuesdays)  next NixOS release (YY.05/YY.11) once out: build + VM test → commit
 installer.yaml (monthly / on change)  installer ISO → GitHub release "installer"
         │
@@ -95,11 +95,6 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 - `claude` has no sudo. `admin` has passwordless sudo, protected by the SSH key.
 - Secrets are decrypted on the box with its SSH host key; only ciphertext is in Git.
 - The box pulls; nothing pushes to it, and no inbound port besides SSH (LAN) is open.
-- Write access to `main` is root on the box within a day. CI jobs that build or
-  run third-party code get read-only tokens (`box.yaml`: `gate` hands a patch to
-  `commit`), and Renovate never auto-merges GitHub Actions updates: review those PRs.
-- `install.sh` sends the box's private host key only after you confirmed the
-  installer's SSH fingerprint against its screen.
 
 ## Security checks (`.github/workflows/security.yaml`)
 
