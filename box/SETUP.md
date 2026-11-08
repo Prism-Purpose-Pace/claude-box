@@ -21,6 +21,13 @@ nix develop ./box --command gh auth login
 Your SSH key `~/.ssh/id_ed25519_claude-box_zodiac` must exist and its public half
 must be in `box/hosts/claude-box/authorized_keys` (already the case).
 
+`setup.sh` commits the encrypted secrets, so install the repository's
+pre-commit hooks first (formatters, linters, secret scan on every commit):
+
+```sh
+nix develop ./dev --command true   # or `direnv allow` if you use direnv
+```
+
 ## 2. GitHub (one time)
 
 ```sh
@@ -75,6 +82,7 @@ nix develop ./box --command ./box/scripts/setup.sh
 | checks key, Keychain, repository                                                        | –                                                                                                                                                                     |
 | creates the box's host key and encrypted secrets (first run only)                       | run `claude setup-token` in a second terminal, paste the token; NetBird key: Enter; ntfy topic: Enter (generates one) – **subscribe to the printed topic in the app** |
 | waits for `claude-installer.local`                                                      | –                                                                                                                                                                     |
+| shows the installer's SSH fingerprint                                                   | compare it with the one on the ZBOX screen, type `yes` only if it matches                                                                                             |
 | shows the disk it will erase                                                            | type `YES`                                                                                                                                                            |
 | installs (builds on the ZBOX, _unverified: roughly 20–40 min on the N3150_) and reboots | –                                                                                                                                                                     |
 | verifies `claude --version`, smoke test, one real prompt, upgrade timer                 | –                                                                                                                                                                     |

@@ -9,7 +9,7 @@ Two things in one repository, each with its own flake:
 1. **Repository root**: a Nix package for the Claude Code binary (derived from ryoppippi/nix-claude-code). `update.nu` downloads release metadata from Anthropic's GCS distribution bucket into `versions/<ver>.json` (URL + SRI hash per platform) and writes the `stable` channel marker. `flake.nix` exposes `claude`/`latest` (newest file in `versions/`), `stable` (from the `stable` marker), `*-minimal`, `*-fhs` (Linux only), one package per version, and `overlays.default`.
 2. **`box/`**: an unattended NixOS host (Zotac ZBOX CI323, Celeron N3150, **no AVX**) that runs Claude Code and upgrades itself from `main`. Its flake imports `../package.nix` and `../package-fhs.nix` directly; it does **not** consume the root flake. Human docs: `box/README.md` (update flow, operations) and `box/SETUP.md` (first install).
 
-`dev/` is a third flake that holds only tooling: treefmt, gitleaks, the Renovate config check, and pre-commit hooks (via `.envrc`: `use flake ./dev`).
+`dev/` is a third flake that holds only tooling: treefmt, gitleaks and the pre-commit hooks (installed by the dev shell: `direnv allow` via `.envrc`, or `nix develop ./dev`). It reads the whole repository through `./..`. User-facing hook docs: root `README.md`.
 
 ## Commands
 
@@ -17,8 +17,8 @@ Two things in one repository, each with its own flake:
 nix build -L                          # root package (latest version)
 nix run . -- --version                # what CI checks: "<x.y.z> (Claude Code)"
 nix build .#stable                    # also .#claude-fhs; a pinned version needs quoting: '.#"2.1.319"'
-cd dev && nix flake check -L          # treefmt (nixfmt, deadnix, statix, typos, oxfmt, nufmt), gitleaks, renovate-config
-cd dev && nix fmt                     # apply formatters to the whole repo (projectRoot is ..)
+cd dev && nix flake check -L          # what CI's `check` job runs: every pre-commit hook on all files + full gitleaks scan
+prek run --all-files                  # same hooks by hand, inside the dev shell (rewrites files)
 ./update.nu                           # fetch new releases into versions/ (normally run by CI, hourly)
 
 nix build -L ./box#toplevel                    # full host system closure
@@ -56,6 +56,35 @@ All of these workflows commit straight to `main`.
 
 ## Conventions
 
-- Nix is formatted with nixfmt and must pass statix and deadnix. JSON/YAML/Markdown use oxfmt (`.oxfmtrc.jsonc`: tabs, single quotes). `update.nu` uses nufmt.
+- **Every change must pass the pre-commit hooks** (`dev/flake.nix`); formatters rewrite files, linters block. Do not disable a hook or add an ignore comment (ruff `noqa`, shellcheck `disable=`) without saying why next to it.
+  - Nix: nixfmt, statix, deadnix, nixf-diagnose.
+  - Python: ruff format + `ruff check` (`ruff.toml`).
+  - Shell (`*.sh`, `.envrc`): bash with `set -euo pipefail`, shfmt (style from `.editorconfig`: 2 spaces, `||`/`&&` at the start of continuation lines), shellcheck.
+  - Workflows: actionlint (with shellcheck on `run:` blocks), zizmor offline.
+  - JSON/YAML/Markdown: oxfmt (`.oxfmtrc.jsonc`: tabs, single quotes). TOML: taplo. `update.nu`: nufmt. Everything: typos, whitespace/EOF, merge markers, shebang/executable bit, large files, gitleaks on staged changes.
 - GitHub Actions are pinned to commit SHAs with a version comment, use `persist-credentials: false`, and set least-privilege `permissions:`. zizmor (`--min-severity low`) blocks CI otherwise; config is in `.github/zizmor.yml`.
+- A push to `main` is root on the box within a day. In `box.yaml` the `gate` job (Nix builds, third-party actions, also runs on same-repository PRs) is read-only and hands a patch to the `commit` job, the only one with `contents: write`. Keep that split, and keep Renovate from auto-merging GitHub Actions updates.
+- `install.sh` never sends anything to the installer over an unverified connection: `installer_connect` (`box/scripts/lib.sh`) pins the host key after the user compares its fingerprint with the installer console, and nixos-anywhere runs over that master connection (`ControlPath`), because its own `StrictHostKeyChecking=no` cannot be overridden.
 - The unfree allowance is limited to the package name `claude` (`allowUnfreePredicate`). The overlay instead relies on the consumer's own nixpkgs config.
+- Commit messages: a prefix for the area (`box:`, `dev:`, `docs:`, `chore:`), imperative summary, body that says why.
+
+## Verification by change type
+
+| Change                          | Run                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| any file                        | `prek run --all-files` (or `cd dev && nix flake check -L`)                |
+| root package (`package*.nix`)   | `nix build -L && nix run . -- --version`                                  |
+| `box/` NixOS modules or `pkgs/` | `nix build -L ./box#toplevel`, then the VM test                           |
+| smoke test / mock API           | the non-AVX smoke test above                                              |
+| workflows                       | hooks (actionlint, zizmor offline); online zizmor runs in `security.yaml` |
+| docs                            | hooks (oxfmt, typos); keep README tables in sync with the code            |
+
+Mac-side scripts (`box/scripts/*.sh`) are interactive and touch real hardware, keys and GitHub settings: do not run them yourself.
+
+## Gotchas
+
+- Flakes only see files tracked by Git. Run `git add -N <file>` on new files before any `nix` command, or they are silently missing.
+- The pre-commit flake check sets `rootSrc` to the whole repository; the flake-parts default would only check `dev/`.
+- `box/secrets/` is excluded from every rewriting hook: `bootstrap.sh` commits sops output there, and a reformat would abort that commit. gitleaks still scans it.
+- zizmor runs offline in the hooks (no network in the Nix sandbox). Online audits such as impostor commits run only in `security.yaml`. The `self-repository` rule is disabled in `.github/zizmor.yml` until actionlint understands the `$/` syntax.
+- `box/SETUP.md` marks hardware steps that were never tested on the real box as _(unverified)_. Keep that marker unless someone confirms the step.

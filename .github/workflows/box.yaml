@@ -8,6 +8,12 @@
 #
 # The box itself pulls main once a day and re-runs the smoke test on its real CPU
 # before switching, so a broken commit can never be activated there.
+#
+# A write to main is root on the box within a day, so the job that builds and
+# runs third-party code (`gate`, also on same-repository PRs such as Renovate's)
+# only gets a read-only token. It hands its changes as a patch to `commit`, the
+# only job with contents: write, which runs no Nix and no third-party actions
+# beyond checkout and download-artifact.
 name: box
 
 on:
@@ -36,8 +42,10 @@ jobs:
   gate:
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # commits box/claude-version, flake.lock, versions/
+      contents: read
     timeout-minutes: 90
+    outputs:
+      ready: ${{ steps.collect.outputs.ready }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -113,26 +121,63 @@ jobs:
             grep -qxF "$v" <<<"$keep" || rm "$f"
           done
 
-      - name: Commit
+      - name: Collect changes for the commit job
+        id: collect
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git config user.name 'github-actions[bot]'
+          mkdir -p "$RUNNER_TEMP/box-changes"
           git add -A versions
-          git add box/claude-version box/flake.lock box/claude-rejected 2>/dev/null || git add box/claude-version box/flake.lock
+          git add box/claude-version box/flake.lock
+          if [ -f box/claude-rejected ]; then git add box/claude-rejected; fi
           if git diff --staged --quiet; then
             echo "Nothing to promote"; exit 0
           fi
+          git diff --staged --stat
+          git diff --staged --binary > "$RUNNER_TEMP/box-changes/changes.patch"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.collect.outputs.ready == 'true'
+        with:
+          name: box-changes
+          path: ${{ runner.temp }}/box-changes/changes.patch
+          retention-days: 7
+
+      - name: Report rejected version
+        if: steps.smoke.outputs.rejected == 'true'
+        run: exit 1 # failed run => GitHub notification mail
+
+  commit:
+    needs: gate
+    # Also after `gate` failed on a rejected version (it reports that by failing
+    # last): the rejection itself is committed. `ready` is only set once the
+    # system build and the VM test passed.
+    if: ${{ !cancelled() && needs.gate.outputs.ready == 'true' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # pushes the changes prepared by `gate`
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: box-changes
+          path: ${{ runner.temp }}/box-changes
+
+      - name: Commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git apply --index "$RUNNER_TEMP/box-changes/changes.patch"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.name 'github-actions[bot]'
           git commit -m "box: promote claude $(cat box/claude-version) / update inputs"
           for _ in 1 2 3; do
             git pull --rebase origin main && git push origin HEAD:main && exit 0
             sleep 10
           done
           exit 1
-
-      - name: Report rejected version
-        if: steps.smoke.outputs.rejected == 'true'
-        run: exit 1 # failed run => GitHub notification mail

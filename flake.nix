@@ -15,7 +15,7 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
       versionFiles = builtins.readDir ./versions;
-      versionNames = builtins.map (f: nixpkgs.lib.removeSuffix ".json" f) (
+      versionNames = map (f: nixpkgs.lib.removeSuffix ".json" f) (
         builtins.filter (f: nixpkgs.lib.hasSuffix ".json" f) (builtins.attrNames versionFiles)
       );
 
@@ -57,7 +57,7 @@
           };
 
           versionedPackages = builtins.listToAttrs (
-            builtins.map (version: {
+            map (version: {
               name = version;
               value = mkClaude pkgs ./versions/${version + ".json"};
             }) versionNames

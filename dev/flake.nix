@@ -34,28 +34,74 @@
         }:
         let
           # Shared by the gitleaks flake check (full `detect`) and the
-          # commit-time pre-commit hook (`protect --staged`), so both stages
+          # commit-time pre-commit hook (`git --staged`), so both stages
           # honour the same rules.
           gitleaksConfig = ./../.gitleaks.toml;
         in
         {
           treefmt = {
-            # Format-check the whole repository, not just `dev/`, so the
-            # `treefmt` flake check covers every tracked file. `cleanSource`
-            # strips `.git`, so anchor the project root on `flake.nix`.
+            # Format the whole repository, not just `dev/`. `cleanSource` strips
+            # `.git`, so anchor the project root on `flake.nix`.
             projectRoot = pkgs.lib.cleanSource ./..;
             projectRootFile = "flake.nix";
+            # The pre-commit flake check below already runs treefmt over every
+            # file (and prints the diff), so skip treefmt-nix's own duplicate.
+            flakeCheck = false;
+            # sops output: any rewrite (oxfmt re-indents it) would make the
+            # commit in box/scripts/bootstrap.sh abort. gitleaks still scans it.
+            settings.global.excludes = [ "box/secrets/*" ];
             programs = {
+              # Nix
               nixfmt.enable = true;
               deadnix.enable = true;
               statix.enable = true;
-              typos.enable = true;
+              nixf-diagnose.enable = true;
+
+              # Python: rules and line length live in `ruff.toml` so editors
+              # and a bare `ruff` invocation agree with the hook.
+              ruff-format.enable = true;
+              ruff-check.enable = true;
+
+              # Shell: shfmt formats (style from `.editorconfig`), shellcheck
+              # lints (including `.envrc`).
+              shfmt = {
+                enable = true;
+                useEditorConfig = true;
+              };
+              shellcheck = {
+                enable = true;
+                # box/scripts/*.sh source lib.sh (`# shellcheck source=lib.sh`).
+                external-sources = true;
+                source-path = "SCRIPTDIR";
+              };
+
+              # GitHub Actions: actionlint also runs shellcheck on `run:`
+              # blocks; zizmor flags insecure workflow patterns offline (the
+              # security workflow repeats it online with a token).
+              actionlint.enable = true;
+              zizmor.enable = true;
+
+              # Markdown, YAML, JSON(5) and TOML.
               oxfmt.enable = true;
+              taplo.enable = true;
+
+              # Spelling across every file.
+              typos.enable = true;
             };
 
             # treefmt-nix ships no nufmt module, so declare the formatter by
             # hand. Without it `update.nu` is the one tracked source file that
             # no formatter checks.
+            # Same threshold and config as the security workflow, but offline:
+            # the flake sandbox has no network and a commit must not depend on
+            # the GitHub API. Online audits (impostor commits, known-vulnerable
+            # actions) stay in `.github/workflows/security.yaml`.
+            settings.formatter.zizmor.options = [
+              "--offline"
+              "--min-severity=low"
+              "--config=.github/zizmor.yml"
+            ];
+
             settings.formatter.nufmt = {
               command = pkgs.lib.getExe pkgs.nufmt;
               includes = [ "*.nu" ];
@@ -80,44 +126,53 @@
                   touch "$out"
                 '';
 
-            # Validate the Renovate config in CI. The matching pre-commit hook
-            # only runs on `git commit`, so a dedicated check keeps the config
-            # covered by `nix flake check` once the pre-commit check is disabled.
-            renovate-config =
-              pkgs.runCommand "renovate-config"
-                {
-                  nativeBuildInputs = [ pkgs.renovate ];
-                }
-                ''
-                  renovate-config-validator --strict ${./../.github/renovate.json5}
-                  touch "$out"
-                '';
           };
 
           pre-commit = {
-            # These hooks run on `git commit` via the dev shell. `nix flake
-            # check` covers the same ground through the dedicated `treefmt` and
-            # `gitleaks` checks, so disable the pre-commit flake check to avoid
-            # running gitleaks and treefmt twice.
-            check.enable = false;
+            # The same hooks run on `git commit` (installed by the dev shell)
+            # and in `nix flake check`, so CI enforces exactly what a commit
+            # enforces. Formatters rewrite files in place on commit; the commit
+            # then aborts so the fixes can be reviewed and staged.
+            check.enable = true;
             settings = {
               src = ./..;
+              # The flake-parts module defaults to `self` (= `dev/` only).
+              rootSrc = pkgs.lib.mkForce (pkgs.lib.cleanSource ./..);
               package = pkgs.prek;
+              # See `treefmt.settings.global.excludes`.
+              excludes = [ "^box/secrets/" ];
               hooks = {
+                # All formatters and linters from the `treefmt` block above.
                 treefmt = {
                   enable = true;
                   package = config.treefmt.build.wrapper;
                 };
+
+                # Repository hygiene that no language formatter covers.
+                check-added-large-files.enable = true;
+                check-case-conflicts.enable = true;
+                check-executables-have-shebangs.enable = true;
+                check-merge-conflicts.enable = true;
+                check-shebang-scripts-are-executable.enable = true;
+                check-symlinks.enable = true;
+                end-of-file-fixer.enable = true;
+                mixed-line-endings.enable = true;
+                trim-trailing-whitespace.enable = true;
+
                 renovate-config-validator = {
                   enable = true;
-                  entry = "${pkgs.lib.getExe' pkgs.renovate "renovate-config-validator"}";
+                  entry = "${pkgs.lib.getExe' pkgs.renovate "renovate-config-validator"} --strict";
                   files = "renovate\\.json5?$";
                   language = "system";
                 };
+
+                # Commit time: staged changes only. The full working-tree scan
+                # is the `gitleaks` check above, the history scan runs in
+                # `.github/workflows/security.yaml`.
                 gitleaks = {
                   enable = true;
                   name = "gitleaks";
-                  entry = "${pkgs.lib.getExe pkgs.gitleaks} protect --staged --config ${gitleaksConfig}";
+                  entry = "${pkgs.lib.getExe pkgs.gitleaks} git --staged --no-banner --redact --config ${gitleaksConfig}";
                   language = "system";
                   pass_filenames = false;
                 };
@@ -132,6 +187,8 @@
           devShells.default = pkgs.mkShellNoCC {
             inherit (config.pre-commit) shellHook;
             packages = [
+              # `prek run --all-files` runs every hook by hand.
+              config.pre-commit.settings.package
               config.packages.typos
               config.packages.typos-lsp
               pkgs.gitleaks

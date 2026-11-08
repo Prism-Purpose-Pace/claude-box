@@ -56,7 +56,7 @@ Boot the ZBOX from the USB stick written by flash-usb.sh
 (LAN cable plugged in; boot menu key on ZOTAC boards is usually F8 or F11).
 TXT
 deadline=$((SECONDS + 1800))
-until ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 "${installer_ssh_opts[@]}" \
+until ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 "${installer_probe_opts[@]}" \
   "root@$installer" true 2>/dev/null; do
   [ $SECONDS -lt $deadline ] || fail "Installer not reachable after 30 minutes. With the stock
 NixOS ISO run instead: ./box/scripts/install.sh <IP>"

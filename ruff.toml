@@ -1,0 +1,9 @@
+# Ruff configuration (https://docs.astral.sh/ruff/configuration/), applied by
+# the treefmt pre-commit hook and the `treefmt` flake check in dev/.
+target-version = "py312"
+line-length = 100
+
+[lint]
+# Defaults (E4, E7, E9, F) plus bugbear, import order, pyupgrade, simplify and
+# bandit-style security checks.
+extend-select = ["B", "I", "UP", "SIM", "S"]

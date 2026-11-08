@@ -15,7 +15,7 @@ box.yaml (every 6 h; Mondays also nixpkgs/disko/sops-nix)
    ├─ build the whole system, run the NixOS VM test
    ├─ prune versions/ to the newest 20
    └─ commit to main
-nixos-release.yaml (Tuesdays)  next NixOS release (YY.05/YY.11) once out: build + VM test → commit
+release.yaml (Tuesdays)  next NixOS release (YY.05/YY.11) once out: build + VM test → commit
 installer.yaml (monthly / on change)  installer ISO → GitHub release "installer"
         │
 claude-box-upgrade.timer (daily ~04:30, catches up after downtime)
@@ -59,6 +59,11 @@ nix develop ./box --command ./box/scripts/repo-setup.sh   # GitHub settings, onc
 ./box/scripts/flash-usb.sh                                # installer onto a USB stick
 nix develop ./box --command ./box/scripts/setup.sh        # secrets, wait for the box, install, verify
 ```
+
+Changing the configuration later: install the repository's pre-commit hooks
+once (see [Contributing](../README.md#contributing-formatting-linting-and-pre-commit-hooks)),
+commit and push to `main`. CI builds and tests it, the box pulls it the next
+night (or run "Upgrade now" below).
 
 ## Daily use
 
