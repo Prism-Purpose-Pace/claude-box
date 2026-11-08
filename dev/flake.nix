@@ -68,7 +68,12 @@
                 enable = true;
                 useEditorConfig = true;
               };
-              shellcheck.enable = true;
+              shellcheck = {
+                enable = true;
+                # box/scripts/*.sh source lib.sh (`# shellcheck source=lib.sh`).
+                external-sources = true;
+                source-path = "SCRIPTDIR";
+              };
 
               # GitHub Actions: actionlint also runs shellcheck on `run:`
               # blocks; zizmor flags insecure workflow patterns offline (the

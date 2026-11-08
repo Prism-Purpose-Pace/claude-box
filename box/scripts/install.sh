@@ -6,16 +6,15 @@
 #
 # WIPES the internal SATA disk of the box and installs claude-box.
 set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ip="${1:-claude-installer.local}"
 cd "$(git rev-parse --show-toplevel)/box"
 
-key="${CLAUDE_BOX_SSH_KEY:-$HOME/.ssh/id_ed25519_claude-box_zodiac}"
-keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
-pubkey="hosts/claude-box/ssh_host_ed25519_key.pub"
 min_disk=$((60 * 1000 * 1000 * 1000))
 
-[ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ] || {
+[ -f "$hostkey" ] || {
   echo "No host key in $keydir - run bootstrap.sh first." >&2
   exit 1
 }
@@ -23,8 +22,9 @@ min_disk=$((60 * 1000 * 1000 * 1000))
   echo "No secrets - run bootstrap.sh first." >&2
   exit 1
 }
-if [ -n "$(git status --porcelain .)" ]; then
-  echo "box/ has uncommitted changes - commit and push first, the box will pull from GitHub." >&2
+# Whole repository: the box flake also builds ../package.nix and ../versions/.
+if [ -n "$(git status --porcelain -- :/)" ]; then
+  echo "The repository has uncommitted changes - commit and push first, the box will pull from GitHub." >&2
   exit 1
 fi
 git fetch -q origin
@@ -33,26 +33,24 @@ if [ -n "$(git rev-list '@{u}..HEAD')" ]; then
   exit 1
 fi
 
-installer_ssh=(-i "$key" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR)
-
-if ssh "${installer_ssh[@]}" -o BatchMode=yes -o ConnectTimeout=10 "root@$ip" true 2>/dev/null; then
-  echo "==> Installer accepts your key"
-else
-  echo "==> Authorising your key on the installer (enter the password you set with 'passwd')"
-  ssh-copy-id -i "$key.pub" "${installer_ssh[@]}" "root@$ip" >/dev/null
-fi
+trap installer_disconnect EXIT
+installer_connect "$ip" "$key"
 
 echo "==> Checking the target disk"
+# The disk disko will wipe, resolved on the installer (handles /dev/disk/by-id/…).
+target=$(nix eval --raw ".#nixosConfigurations.claude-box.config.disko.devices.disk.main.device")
+target_name=$(ssh "${installer_ssh[@]}" "root@$ip" readlink -f "$target")
+target_name="${target_name#/dev/}"
 disks=$(ssh "${installer_ssh[@]}" "root@$ip" lsblk -dnbo NAME,TRAN,RM,SIZE,MODEL)
 echo "$disks"
-read -r _ tran rm size model <<<"$(awk '$1=="sda"' <<<"$disks")"
+read -r _ tran rm size model <<<"$(awk -v d="$target_name" '$1==d' <<<"$disks")"
 if [ "${tran:-}" != "sata" ] || [ "${rm:-1}" != "0" ] || [ "${size:-0}" -lt "$min_disk" ]; then
-  echo "/dev/sda is not the internal SATA disk - aborting, nothing was changed." >&2
+  echo "$target is not the internal SATA disk - aborting, nothing was changed." >&2
   echo "Set disko.devices.disk.main.device in hosts/claude-box/disko.nix to the right disk." >&2
   exit 1
 fi
 echo
-read -r -p "ERASE /dev/sda ($model, $((size / 1000000000)) GB) and install claude-box? Type YES: " answer
+read -r -p "ERASE $target ($model, $((size / 1000000000)) GB) and install claude-box? Type YES: " answer
 [ "$answer" = "YES" ] || exit 1
 
 echo "==> Installing (builds on the box, takes a while on the N3150)"
@@ -61,9 +59,9 @@ nixos-anywhere \
   --build-on remote \
   --extra-files "$keydir" \
   -i "$key" \
-  --ssh-option UserKnownHostsFile=/dev/null \
-  --ssh-option StrictHostKeyChecking=no \
+  --ssh-option "${installer_mux[1]}" \
   --target-host "root@$ip"
+installer_disconnect
 
 echo "==> Trusting the box's host key"
 ssh-keygen -R claude-box.local >/dev/null 2>&1 || true

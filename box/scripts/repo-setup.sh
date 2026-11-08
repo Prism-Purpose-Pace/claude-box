@@ -4,7 +4,9 @@
 # Needs admin rights on the repository. Safe to re-run.
 set -euo pipefail
 
-repo=$(git remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+repo=$(repo_slug)
 echo "Configuring $repo"
 
 echo "==> Actions: enabled, all actions allowed, token read-only by default"

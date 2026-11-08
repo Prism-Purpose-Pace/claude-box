@@ -26,6 +26,15 @@ const platforms = {
     "aarch64-darwin": "darwin-arm64"
 }
 
+# Versions whose manifest.json returned 404, one "<version> <YYYY-MM-DD>" per
+# line. They are skipped instead of being requested on every hourly run, and
+# retried once the entry is older than UNAVAILABLE_RETRY_DAYS.
+const UNAVAILABLE_FILE = "versions/unavailable.txt"
+const UNAVAILABLE_RETRY_DAYS = 30
+
+# Size of the version window `box.yaml` keeps when it prunes `versions/`.
+const KEEP_VERSIONS = 20
+
 # Sort a list of version strings using semver ordering (ascending).
 def semver-sort []: list<string> -> list<string> {
     $in | each { into semver } | sort | each { into string }
@@ -77,6 +86,45 @@ def get-existing-versions []: nothing -> record<versions: list<string>, latest: 
     }
 }
 
+# All entries of UNAVAILABLE_FILE as {version, date} records. A line without a
+# date counts as old, so it is retried.
+def read-unavailable []: nothing -> list<any> {
+    let path = $script_dir | path join $UNAVAILABLE_FILE
+    match ($path | path exists) {
+        true => (
+            open --raw $path
+            | lines
+            | where {|l| ($l | str trim) != "" }
+            | each {|l|
+                let parts = $l | str trim | split row --regex '\s+'
+                {version: $parts.0, date: ($parts | get -o 1 | default "1970-01-01")}
+            }
+        )
+        false => []
+    }
+}
+
+# Versions recorded as unavailable (manifest 404) within the retry window.
+def get-unavailable-versions []: nothing -> list<string> {
+    let cutoff = (date now) - ($UNAVAILABLE_RETRY_DAYS * 1day)
+    read-unavailable
+    | where {|r| ($r.date | into datetime) > $cutoff }
+    | each {|r| $r.version }
+}
+
+# Record (or refresh) a version as unavailable as of today.
+def record-unavailable [version: string]: nothing -> nothing {
+    let today = date now | format date "%Y-%m-%d"
+    # Read completely before saving: the file is the source and the target.
+    let kept = read-unavailable | where {|r| $r.version != $version } | collect
+    $kept
+    | append {version: $version, date: $today}
+    | each {|r| $"($r.version) ($r.date)" }
+    | append ""
+    | str join "\n"
+    | save -f ($script_dir | path join $UNAVAILABLE_FILE)
+}
+
 # Write version sources to the versions directory.
 def write-version-sources [
     version: string
@@ -101,11 +149,27 @@ def write-version-sources [
 
 # Fetch manifest, compute SRI hashes, and write the version file.
 # Returns true if the version was written, false if the manifest was unavailable.
-def process-version [version: string]: nothing -> bool {
-    let manifest = (try { http get $"($BASE_URL)/($version)/manifest.json" } catch {|err|
+# With --record-404, a 404 is recorded in UNAVAILABLE_FILE (retried after
+# UNAVAILABLE_RETRY_DAYS); everything else is retried next run. Only pass it for versions older than the newest tracked one:
+# a fresh npm release can briefly 404 on GCS before its upload finishes.
+def process-version [version: string, --record-404]: nothing -> bool {
+    let response = (try { http get --full --allow-errors $"($BASE_URL)/($version)/manifest.json" } catch {|err|
         print -e $"  Skipping ($version): ($err.msg)"
         null
     })
+    let manifest = match $response {
+        null => null
+        {status: 200} => $response.body
+        {status: 404} if $record_404 => {
+            print -e $"  Skipping ($version): no manifest \(404\), recorded as unavailable"
+            record-unavailable $version
+            null
+        }
+        _ => {
+            print -e $"  Skipping ($version): HTTP ($response.status)"
+            null
+        }
+    }
 
     match $manifest {
         null => false
@@ -144,8 +208,12 @@ def main []: nothing -> nothing {
     let existing_versions = $existing.versions
     let current_version = $existing.latest
 
+    # Abbreviated metadata: version list without READMEs etc. (about a third
+    # of the size). Served as application/vnd.npm.install-v1+json, so parse it.
     let all_npm_versions = (
-        http get $NPM_PACKAGE_URL
+        http get --headers [Accept application/vnd.npm.install-v1+json] $NPM_PACKAGE_URL
+        | decode utf-8
+        | from json
         | get versions
         | columns
         | semver-sort
@@ -164,13 +232,15 @@ def main []: nothing -> nothing {
     print $"GCS stable:      ($stable_version)"
     print $"Latest version:  ($latest_version)"
 
-    # Find the earliest existing version to determine the backfill range.
-    # Only backfill versions >= the earliest version we already track.
-    let earliest = $existing_versions | get 0?
+    # Backfill only inside the window `box.yaml` keeps (the newest KEEP_VERSIONS).
+    # It also keeps older files that `stable` or box/claude-version point to;
+    # starting at those would re-add the pruned gap every hour.
+    let earliest = $existing_versions | last $KEEP_VERSIONS | get 0?
+    let unavailable = (get-unavailable-versions)
 
     let missing_versions = (
         $all_npm_versions
-        | where {|v| $v not-in $existing_versions and ($earliest == null or (semver-gte $v $earliest))}
+        | where {|v| $v not-in $existing_versions and $v not-in $unavailable and ($earliest == null or (semver-gte $v $earliest))}
     )
 
     match ($missing_versions | is-empty) {
@@ -180,7 +250,8 @@ def main []: nothing -> nothing {
 
             $missing_versions | each {|version|
                 print $"Processing ($version)..."
-                match (process-version $version) {
+                let old = $current_version != null and not (semver-gte $version $current_version)
+                match (process-version $version --record-404=$old) {
                     true => { print $"  Added ($version)" }
                     false => {}
                 }

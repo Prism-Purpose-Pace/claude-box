@@ -10,7 +10,9 @@ set -euo pipefail
   exit 1
 }
 
-repo=$(git remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+repo=$(repo_slug)
 base="https://github.com/$repo/releases/download/installer"
 cache="$HOME/.cache/claude-box"
 iso="$cache/claude-box-installer.iso"

@@ -93,4 +93,6 @@ class H(http.server.BaseHTTPRequestHandler):
         w(sse("message_stop", {"type": "message_stop"}))
 
 
-http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+print(srv.server_address[1], flush=True)
+srv.serve_forever()

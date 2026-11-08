@@ -82,6 +82,7 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Rotate the Claude token     | `bootstrap.sh --secrets`; the box picks it up with its next upgrade (or "Upgrade now")                             |
 | Enable NetBird              | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix` |
+| Reinstall from scratch      | `bootstrap.sh --new-host-key` (new host key, secrets re-encrypted), then `setup.sh`                                |
 | Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                     |
 | Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history`, `journalctl -u claude-box-upgrade`                         |
 | Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)  |

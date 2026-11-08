@@ -2,6 +2,7 @@
 # Run on the Mac, from anywhere inside the repo:
 #   nix develop ./box --command ./box/scripts/bootstrap.sh            # first time
 #   nix develop ./box --command ./box/scripts/bootstrap.sh --secrets  # rotate token later
+#   nix develop ./box --command ./box/scripts/bootstrap.sh --new-host-key  # reinstall
 #
 # 1. Creates the SSH host key of the box ON THE MAC (only the public half is
 #    committed; the private half is copied onto the box by install.sh and then
@@ -10,29 +11,46 @@
 # 3. Asks for the secrets and commits them encrypted to secrets/secrets.yaml.
 #    Plaintext never touches the repository directory.
 set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 cd "$(git rev-parse --show-toplevel)/box"
 
-keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
-hostkey="$keydir/etc/ssh/ssh_host_ed25519_key"
-pubkey="hosts/claude-box/ssh_host_ed25519_key.pub"
+rotate=false
+new_host_key=false
+case "${1:-}" in
+  "") ;;
+  --secrets) rotate=true ;;
+  --new-host-key) new_host_key=true ;;
+  *)
+    echo "Usage: $0 [--secrets | --new-host-key]" >&2
+    exit 1
+    ;;
+esac
 
-if [ "${1:-}" != "--secrets" ]; then
-  if [ -f "$pubkey" ]; then
-    echo "Host key already exists ($pubkey) - keeping it."
+if ! $rotate; then
+  if [ -f "$hostkey" ]; then
+    echo "Host key already exists ($hostkey) - keeping it."
   else
-    if [ ! -f "$hostkey" ]; then
-      # Parent is private; the tree itself keeps normal modes because
-      # nixos-anywhere copies it verbatim onto the root of the new system.
-      mkdir -p "$(dirname "$keydir")"
-      chmod 700 "$(dirname "$keydir")"
-      mkdir -p "$keydir/etc/ssh"
-      chmod 755 "$keydir" "$keydir/etc" "$keydir/etc/ssh"
-      ssh-keygen -q -t ed25519 -N "" -C "root@claude-box" -f "$hostkey"
+    # No private half but a committed public one: install.sh deleted it after
+    # installing. A new key re-encrypts the secrets to it and pushes them, so
+    # the running box can no longer decrypt its secrets until it is reinstalled.
+    if [ -f "$pubkey" ] && ! $new_host_key; then
+      echo "claude-box is already installed (private host key removed after install)." >&2
+      echo "Rotate secrets:  $0 --secrets" >&2
+      echo "Reinstall:       $0 --new-host-key  (the running box loses its secrets)" >&2
+      exit 1
     fi
-    cp "$hostkey.pub" "$pubkey"
+    # Parent is private; the tree itself keeps normal modes because
+    # nixos-anywhere copies it verbatim onto the root of the new system.
+    mkdir -p "$(dirname "$keydir")"
+    chmod 700 "$(dirname "$keydir")"
+    mkdir -p "$keydir/etc/ssh"
+    chmod 755 "$keydir" "$keydir/etc" "$keydir/etc/ssh"
+    ssh-keygen -q -t ed25519 -N "" -C "root@claude-box" -f "$hostkey"
     echo "Created host key, private half in $keydir (deleted after install)."
   fi
+  cp "$hostkey.pub" "$pubkey"
 fi
 
 [ -f "$pubkey" ] || {
@@ -56,10 +74,29 @@ echo
   echo "Token is required." >&2
   exit 1
 }
-read -r -s -p "NetBird setup key (empty = no NetBird): " netbird
+
+# On rotation keep the other secrets: only the box can decrypt secrets.yaml,
+# so read the current values from the running box.
+current_secret() {
+  if $rotate; then
+    ssh -o BatchMode=yes -o ConnectTimeout=5 claude-box-admin "sudo cat /run/secrets/$1" 2>/dev/null || true
+  fi
+}
+old_netbird=$(current_secret netbird_setup_key)
+old_topic=$(current_secret ntfy_topic)
+
+read -r -s -p "NetBird setup key (empty = ${old_netbird:+keep the current one}${old_netbird:-no NetBird}): " netbird
 echo
-read -r -p "ntfy topic for push notifications (empty = generate a new one): " topic
+netbird="${netbird:-$old_netbird}"
+remote_access=$(nix eval --raw .#nixosConfigurations.claude-box.config.box.remoteAccess)
+if [ -z "$netbird" ] && [ "$remote_access" = netbird ]; then
+  echo "remoteAccess is \"netbird\" - a NetBird setup key is required." >&2
+  exit 1
+fi
+read -r -p "ntfy topic for push notifications (empty = ${old_topic:+keep $old_topic}${old_topic:-generate a new one}): " topic
+topic="${topic:-$old_topic}"
 if [ -z "$topic" ]; then
+  $rotate && echo "Could not read the current topic from the box - a new one means re-subscribing in the ntfy app." >&2
   topic="claude-box-$(openssl rand -hex 12)"
 fi
 
@@ -71,7 +108,7 @@ printf "ntfy_topic: '%s'\n" "$topic" >>"$tmp"
 if [ -n "$netbird" ]; then
   printf "netbird_setup_key: '%s'\n" "$netbird" >>"$tmp"
 fi
-unset token netbird
+unset token netbird old_netbird
 
 mkdir -p secrets
 sops encrypt --filename-override secrets/secrets.yaml \
