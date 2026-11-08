@@ -93,8 +93,8 @@ Afterwards **remove the USB stick**, otherwise the next boot starts the installe
 ## 7. Check
 
 ```sh
-ssh claude-box                                                # user claude
-ssh claude-box-admin claude-box-notify "claude-box" "test"    # should reach your phone
+ssh claude-box                                                   # user claude
+ssh claude-box-admin sudo claude-box-notify "claude-box" "test"  # should reach your phone
 ssh claude-box-admin systemctl list-timers 'claude-box-*'
 ```
 

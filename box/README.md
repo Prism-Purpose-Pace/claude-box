@@ -88,7 +88,7 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 | Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                                                                                     |
 | Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history` (`OK` / `REJECTED` / `SKIPPED` / `ROLLBACK`), `journalctl -u claude-box-upgrade`                                            |
 | Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)                                                                  |
-| Test notifications          | `ssh claude-box-admin claude-box-notify "claude-box" "test"`                                                                                                                       |
+| Test notifications          | `ssh claude-box-admin sudo claude-box-notify "claude-box" "test"`                                                                                                                  |
 | Box not reachable           | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting)                                                                           |
 
 ## Security model
