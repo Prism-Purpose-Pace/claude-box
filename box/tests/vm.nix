@@ -17,9 +17,11 @@ pkgs.testers.runNixOSTest {
       ];
       nixpkgs.overlays = self.nixosConfigurations.claude-box.config.nixpkgs.overlays;
       nixpkgs.config.allowUnfreePredicate = _: true;
-      box.sshKeys = [ (builtins.readFile ../hosts/claude-box/authorized_keys) ];
-      box.hasSecrets = lib.mkForce false;
-      box.upgrade.flake = "path:/nonexistent";
+      box = {
+        sshKeys = [ (builtins.readFile ../hosts/claude-box/authorized_keys) ];
+        hasSecrets = lib.mkForce false;
+        upgrade.flake = "path:/nonexistent";
+      };
       boot.loader.systemd-boot.enable = lib.mkForce false;
       boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
       virtualisation.memorySize = 2048;

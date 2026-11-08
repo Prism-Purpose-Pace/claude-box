@@ -31,18 +31,18 @@ problems that only appear later at runtime; for those, roll back (see below).
 
 ## Layout
 
-| Path | Purpose |
-|---|---|
-| `../package.nix`, `../package-fhs.nix` | Claude Code binary wrapper; FHS variant used on the box (agent teams) |
-| `../update.nu`, `../versions/`, `../stable` | release tracking, fed by `update.yaml` |
-| `flake.nix` | host config, packages `claude` / `smoke-test` / `toplevel`, VM test, Mac dev shell |
-| `claude-version` / `claude-rejected` | deployed version / last version rejected by CI (both written by CI) |
-| `hosts/claude-box/` | hardware, disk layout, SSH keys, host settings |
-| `modules/` | base system, `claude` user, self-testing upgrades, remote access |
-| `pkgs/` | smoke test + mock Messages API |
-| `tests/vm.nix` | VM test run by CI |
-| `scripts/` | `bootstrap.sh`, `install.sh` (run on the Mac) |
-| `secrets/secrets.yaml` | sops-encrypted to the box's SSH host key, created by `bootstrap.sh` |
+| Path                                        | Purpose                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `../package.nix`, `../package-fhs.nix`      | Claude Code binary wrapper; FHS variant used on the box (agent teams)              |
+| `../update.nu`, `../versions/`, `../stable` | release tracking, fed by `update.yaml`                                             |
+| `flake.nix`                                 | host config, packages `claude` / `smoke-test` / `toplevel`, VM test, Mac dev shell |
+| `claude-version` / `claude-rejected`        | deployed version / last version rejected by CI (both written by CI)                |
+| `hosts/claude-box/`                         | hardware, disk layout, SSH keys, host settings                                     |
+| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access                   |
+| `pkgs/`                                     | smoke test + mock Messages API                                                     |
+| `tests/vm.nix`                              | VM test run by CI                                                                  |
+| `scripts/`                                  | `bootstrap.sh`, `install.sh` (run on the Mac)                                      |
+| `secrets/secrets.yaml`                      | sops-encrypted to the box's SSH host key, created by `bootstrap.sh`                |
 
 ## First install
 
@@ -77,14 +77,14 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 
 ## Occasional tasks
 
-| Task | How |
-|---|---|
-| Rotate the Claude token | `bootstrap.sh --secrets`; the box picks it up with its next upgrade (or "Upgrade now") |
-| Enable NetBird | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix` |
-| Upgrade now | `ssh claude-box-admin sudo systemctl start claude-box-upgrade` |
-| Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history`, `journalctl -u claude-box-upgrade` |
-| Roll back | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept) |
-| Box not reachable | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting) |
+| Task                        | How                                                                                                                |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Rotate the Claude token     | `bootstrap.sh --secrets`; the box picks it up with its next upgrade (or "Upgrade now")                             |
+| Enable NetBird              | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix` |
+| Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                     |
+| Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history`, `journalctl -u claude-box-upgrade`                         |
+| Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)  |
+| Box not reachable           | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting)           |
 
 ## Security model
 
@@ -95,11 +95,11 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 
 ## Security checks (`.github/workflows/security.yaml`)
 
-| Check | When | Effect |
-|---|---|---|
-| gitleaks (secrets in Git history) | every push / PR | blocks |
-| zizmor (insecure workflow patterns, `.github/zizmor.yml`) | every push / PR | blocks |
-| sbomnix SBOM (CycloneDX + SPDX) + grype CVE scan of the box system | Sundays | report artifact; fails (mail) only on a **new** critical finding, which is then added to `security/known-critical.txt` |
+| Check                                                              | When            | Effect                                                                                                                 |
+| ------------------------------------------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| gitleaks (secrets in Git history)                                  | every push / PR | blocks                                                                                                                 |
+| zizmor (insecure workflow patterns, `.github/zizmor.yml`)          | every push / PR | blocks                                                                                                                 |
+| sbomnix SBOM (CycloneDX + SPDX) + grype CVE scan of the box system | Sundays         | report artifact; fails (mail) only on a **new** critical finding, which is then added to `security/known-critical.txt` |
 
 grype matches by version number and cannot see fixes that nixpkgs backports as
 patches, so check a finding against the nixpkgs package before acting. Real fixes

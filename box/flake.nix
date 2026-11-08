@@ -25,7 +25,7 @@
     }:
     let
       system = "x86_64-linux";
-      lib = nixpkgs.lib;
+      inherit (nixpkgs) lib;
 
       # The Claude Code package comes from the parent directory (this fork).
       # box/claude-version is only advanced by CI after the version passed the
