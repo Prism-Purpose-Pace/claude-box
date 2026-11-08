@@ -20,15 +20,23 @@ let
   # Starting configuration of the claude user (Claude Code settings, herdr
   # config), copied from box/home/claude only where a file does not exist yet:
   # changes made on the box are kept, and a reinstall gets the same setup.
-  seedHome = pkgs.writeShellScript "claude-seed-home" ''
-    set -eu
-    cd ${../home/claude}
-    find . -type f | while read -r f; do
-      [ -e "$HOME/$f" ] && continue
-      if [ -x "$f" ]; then mode=0755; else mode=0644; fi
-      install -D -m "$mode" "$f" "$HOME/$f"
-    done
-  '';
+  # writeShellApplication sets PATH itself: runuser resets it to
+  # /usr/bin:/bin, which does not exist on NixOS.
+  seedHome = pkgs.writeShellApplication {
+    name = "claude-seed-home";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.findutils
+    ];
+    text = ''
+      cd ${../home/claude}
+      find . -type f | while read -r f; do
+        [ -e "$HOME/$f" ] && continue
+        if [ -x "$f" ]; then mode=0755; else mode=0644; fi
+        install -D -m "$mode" "$f" "$HOME/$f"
+      done
+    '';
+  };
 
   # herdr plugins to install after a (re)install. Not done on activation:
   # herdr shows a trust preview (commit, build commands, hooks) that you
@@ -101,7 +109,7 @@ in
         install -m 0600 -o claude -g users ${onboarding} /home/claude/.claude.json
       fi
       if [ -d /home/claude ]; then
-        ${pkgs.util-linux}/bin/runuser -u claude -- env HOME=/home/claude ${seedHome} \
+        ${pkgs.util-linux}/bin/runuser -u claude -- ${pkgs.coreutils}/bin/env HOME=/home/claude ${lib.getExe seedHome} \
           || echo "warning: could not seed /home/claude from box/home/claude" >&2
       fi
     '';
