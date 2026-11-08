@@ -12,6 +12,7 @@ update.yaml (hourly)      new Claude Code releases → versions/*.json, `stable`
 box.yaml (every 6 h; Mondays also nixpkgs/disko/sops-nix)
    ├─ candidate = `stable`; full headless turn on QEMU -cpu Westmere (no AVX)
    │    pass → box/claude-version      fail → box/claude-rejected + mail
+   │    (a broken test harness fails the run without rejecting the version)
    ├─ build the whole system, run the NixOS VM test
    ├─ prune versions/ to the newest 20
    └─ commit to main
@@ -21,6 +22,7 @@ installer.yaml (monthly / on change)  installer ISO → GitHub release "installe
 claude-box-upgrade.timer (daily ~04:30, catches up after downtime)
    ├─ build main from GitHub (binaries from cache.nixos.org)
    ├─ smoke test of the NEW Claude Code on the REAL N3150 (local mock API, no tokens)
+   │    Claude fails → REJECTED; harness fails → SKIPPED, retried next run
    ├─ switch; if switching fails, roll back to the previous generation
    └─ reboot only if the kernel changed
 claude-box-token-check.timer (monthly)  one real prompt with the stored token
@@ -78,16 +80,16 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 
 ## Occasional tasks
 
-| Task                        | How                                                                                                                |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Rotate the Claude token     | `bootstrap.sh --secrets`; the box picks it up with its next upgrade (or "Upgrade now")                             |
-| Enable NetBird              | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix` |
-| Reinstall from scratch      | `bootstrap.sh --new-host-key` (new host key, secrets re-encrypted), then `setup.sh`                                |
-| Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                     |
-| Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history`, `journalctl -u claude-box-upgrade`                         |
-| Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)  |
-| Test notifications          | `ssh claude-box-admin claude-box-notify "claude-box" "test"`                                                       |
-| Box not reachable           | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting)           |
+| Task                        | How                                                                                                                                                                                |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rotate the Claude token     | `bootstrap.sh --secrets`; Enter keeps NetBird key and ntfy topic (read from the box, so it must be reachable); the box picks the token up with its next upgrade (or "Upgrade now") |
+| Enable NetBird              | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix`                                                                 |
+| Reinstall from scratch      | `bootstrap.sh --new-host-key` (new host key, secrets re-encrypted), then `setup.sh`                                                                                                |
+| Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                                                                                     |
+| Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history` (`OK` / `REJECTED` / `SKIPPED` / `ROLLBACK`), `journalctl -u claude-box-upgrade`                                            |
+| Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)                                                                  |
+| Test notifications          | `ssh claude-box-admin claude-box-notify "claude-box" "test"`                                                                                                                       |
+| Box not reachable           | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting)                                                                           |
 
 ## Security model
 

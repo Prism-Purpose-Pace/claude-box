@@ -38,6 +38,7 @@ Enables Actions, secret scanning, push protection and vulnerability alerts, and
 starts the first workflow runs. Then, in the browser:
 
 - **Install Renovate** for the repository: https://github.com/apps/renovate
+  (lock files are merged automatically; GitHub Actions updates wait for your review)
 - Wait until **Actions → installer** is green (≈ 10 min). It publishes the
   installer ISO as the release `installer`.
 
