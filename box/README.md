@@ -46,7 +46,7 @@ Prerequisites: Nix on the Mac, the ZBOX booted from the NixOS minimal ISO with
 `passwd` set for root, its IP from `ip a`, and the GitHub Actions of this fork enabled.
 
 ```sh
-git clone git@github.com:philippsied/nix-claude-box.git && cd nix-claude-box
+git clone git@github.com:Prism-Purpose-Pace/claude-box.git && cd claude-box
 nix develop ./box --command ./box/scripts/bootstrap.sh       # asks for `claude setup-token` output
 nix develop ./box --command ./box/scripts/install.sh <IP>    # wipes /dev/sda after confirmation
 ```
