@@ -47,6 +47,9 @@
             # The pre-commit flake check below already runs treefmt over every
             # file (and prints the diff), so skip treefmt-nix's own duplicate.
             flakeCheck = false;
+            # sops output: any rewrite (oxfmt re-indents it) would make the
+            # commit in box/scripts/bootstrap.sh abort. gitleaks still scans it.
+            settings.global.excludes = [ "box/secrets/*" ];
             programs = {
               # Nix
               nixfmt.enable = true;
@@ -131,6 +134,8 @@
               # The flake-parts module defaults to `self` (= `dev/` only).
               rootSrc = pkgs.lib.mkForce (pkgs.lib.cleanSource ./..);
               package = pkgs.prek;
+              # See `treefmt.settings.global.excludes`.
+              excludes = [ "^box/secrets/" ];
               hooks = {
                 # All formatters and linters from the `treefmt` block above.
                 treefmt = {

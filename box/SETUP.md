@@ -21,6 +21,13 @@ nix develop ./box --command gh auth login
 Your SSH key `~/.ssh/id_ed25519_claude-box_zodiac` must exist and its public half
 must be in `box/hosts/claude-box/authorized_keys` (already the case).
 
+`setup.sh` commits the encrypted secrets, so install the repository's
+pre-commit hooks first (formatters, linters, secret scan on every commit):
+
+```sh
+nix develop ./dev --command true   # or `direnv allow` if you use direnv
+```
+
 ## 2. GitHub (one time)
 
 ```sh
