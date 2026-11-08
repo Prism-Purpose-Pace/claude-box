@@ -9,9 +9,12 @@
 #
 # Safe to re-run: finished steps are skipped.
 set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 cd "$(git rev-parse --show-toplevel)/box"
 key="${CLAUDE_BOX_SSH_KEY:-$HOME/.ssh/id_ed25519_claude-box_zodiac}"
+keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
 installer="${CLAUDE_BOX_INSTALLER:-claude-installer.local}"
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -24,6 +27,8 @@ step "1/4 Checking the Mac"
 [ -f "$key" ] || fail "SSH key $key not found. Create it with:
   ssh-keygen -t ed25519 -f $key && ssh-add --apple-use-keychain $key
 then add $key.pub to box/hosts/claude-box/authorized_keys, commit and push."
+[ -f "$key.pub" ] || fail "Public key $key.pub not found. Recreate it with:
+  ssh-keygen -y -f $key > $key.pub"
 if [ "$(uname)" = Darwin ]; then
   ssh-add --apple-use-keychain "$key" 2>/dev/null || true
 fi
@@ -33,7 +38,8 @@ git pull -q --ff-only || fail "Could not fast-forward to origin/main - resolve t
 echo "OK: key, Keychain, repository up to date"
 
 step "2/4 Host key and secrets"
-if [ -f secrets/secrets.yaml ] && [ -f hosts/claude-box/ssh_host_ed25519_key.pub ]; then
+if [ -f secrets/secrets.yaml ] && [ -f hosts/claude-box/ssh_host_ed25519_key.pub ] \
+  && [ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ]; then
   echo "Already there (rotate later with: ./box/scripts/bootstrap.sh --secrets)"
 else
   ./scripts/bootstrap.sh
@@ -46,8 +52,8 @@ Boot the ZBOX from the USB stick written by flash-usb.sh
 (LAN cable plugged in; boot menu key on ZOTAC boards is usually F8 or F11).
 TXT
 deadline=$((SECONDS + 1800))
-until ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 -o UserKnownHostsFile=/dev/null \
-  -o StrictHostKeyChecking=no -o LogLevel=ERROR "root@$installer" true 2>/dev/null; do
+until ssh -i "$key" -o BatchMode=yes -o ConnectTimeout=5 "${installer_ssh_opts[@]}" \
+  "root@$installer" true 2>/dev/null; do
   [ $SECONDS -lt $deadline ] || fail "Installer not reachable after 30 minutes. With the stock
 NixOS ISO run instead: ./box/scripts/install.sh <IP>"
   printf '.'

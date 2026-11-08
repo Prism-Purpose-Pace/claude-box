@@ -98,6 +98,7 @@ jobs:
 
       - name: Prune version archive
         # Keep the newest 20 versions plus whatever `stable` and the box point to.
+        # update.nu backfills only inside this window (KEEP_VERSIONS there).
         run: |
           keep=$( (find versions -name '*.json' -printf '%f\n' | sed 's/\.json$//' | sort -V | tail -20; cat stable box/claude-version) | sort -uV)
           for f in versions/*.json; do

@@ -21,4 +21,4 @@ class H(http.server.BaseHTTPRequestHandler):
         w(sse("content_block_stop",{"type":"content_block_stop","index":0}))
         w(sse("message_delta",{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":None},"usage":{"output_tokens":2}}))
         w(sse("message_stop",{"type":"message_stop"}))
-http.server.ThreadingHTTPServer(("127.0.0.1",int(sys.argv[1])),H).serve_forever()
+srv=http.server.ThreadingHTTPServer(("127.0.0.1",0),H); print(srv.server_address[1],flush=True); srv.serve_forever()

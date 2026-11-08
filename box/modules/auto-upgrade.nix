@@ -38,7 +38,13 @@ let
       fi
 
       echo "Smoke-testing Claude Code of $new on this CPU"
-      if ! runuser -u nobody -- ${pkgs.claude-smoke-test}/bin/claude-smoke-test "$new/claude-code/bin/claude"; then
+      rc=0
+      runuser -u nobody -- ${pkgs.claude-smoke-test}/bin/claude-smoke-test "$new/claude-code/bin/claude" || rc=$?
+      if [ "$rc" -eq 2 ]; then
+        echo "$(date -Is) SKIPPED $new (smoke test harness failed, retry next run)" >> "$state/history"
+        echo "Smoke test could not run, keeping $cur" >&2
+        exit 1
+      elif [ "$rc" -ne 0 ]; then
         echo "$(date -Is) REJECTED $new (smoke test failed)" >> "$state/history"
         echo "Smoke test failed, keeping $cur" >&2
         exit 1

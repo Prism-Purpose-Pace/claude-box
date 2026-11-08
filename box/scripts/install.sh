@@ -6,6 +6,8 @@
 #
 # WIPES the internal SATA disk of the box and installs claude-box.
 set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 ip="${1:-claude-installer.local}"
 cd "$(git rev-parse --show-toplevel)/box"
@@ -17,8 +19,9 @@ min_disk=$((60 * 1000 * 1000 * 1000))
 
 [ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ] || { echo "No host key in $keydir - run bootstrap.sh first." >&2; exit 1; }
 [ -f secrets/secrets.yaml ] || { echo "No secrets - run bootstrap.sh first." >&2; exit 1; }
-if [ -n "$(git status --porcelain .)" ]; then
-  echo "box/ has uncommitted changes - commit and push first, the box will pull from GitHub." >&2
+# Whole repository: the box flake also builds ../package.nix and ../versions/.
+if [ -n "$(git status --porcelain -- :/)" ]; then
+  echo "The repository has uncommitted changes - commit and push first, the box will pull from GitHub." >&2
   exit 1
 fi
 git fetch -q origin
@@ -27,7 +30,7 @@ if [ -n "$(git rev-list '@{u}..HEAD')" ]; then
   exit 1
 fi
 
-installer_ssh=(-i "$key" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR)
+installer_ssh=(-i "$key" "${installer_ssh_opts[@]}")
 
 if ssh "${installer_ssh[@]}" -o BatchMode=yes -o ConnectTimeout=10 "root@$ip" true 2>/dev/null; then
   echo "==> Installer accepts your key"
@@ -37,16 +40,20 @@ else
 fi
 
 echo "==> Checking the target disk"
+# The disk disko will wipe, resolved on the installer (handles /dev/disk/by-id/…).
+target=$(nix eval --raw ".#nixosConfigurations.claude-box.config.disko.devices.disk.main.device")
+target_name=$(ssh "${installer_ssh[@]}" "root@$ip" readlink -f "$target")
+target_name="${target_name#/dev/}"
 disks=$(ssh "${installer_ssh[@]}" "root@$ip" lsblk -dnbo NAME,TRAN,RM,SIZE,MODEL)
 echo "$disks"
-read -r _ tran rm size model <<<"$(awk '$1=="sda"' <<<"$disks")"
+read -r _ tran rm size model <<<"$(awk -v d="$target_name" '$1==d' <<<"$disks")"
 if [ "${tran:-}" != "sata" ] || [ "${rm:-1}" != "0" ] || [ "${size:-0}" -lt "$min_disk" ]; then
-  echo "/dev/sda is not the internal SATA disk - aborting, nothing was changed." >&2
+  echo "$target is not the internal SATA disk - aborting, nothing was changed." >&2
   echo "Set disko.devices.disk.main.device in hosts/claude-box/disko.nix to the right disk." >&2
   exit 1
 fi
 echo
-read -r -p "ERASE /dev/sda ($model, $((size / 1000000000)) GB) and install claude-box? Type YES: " answer
+read -r -p "ERASE $target ($model, $((size / 1000000000)) GB) and install claude-box? Type YES: " answer
 [ "$answer" = "YES" ] || exit 1
 
 echo "==> Installing (builds on the box, takes a while on the N3150)"
