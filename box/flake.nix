@@ -69,7 +69,13 @@
         ];
       };
 
+      nixosConfigurations.installer = lib.nixosSystem {
+        inherit system;
+        modules = [ ./installer/configuration.nix ];
+      };
+
       packages.${system} = {
+        installer-iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         claude = pkgs.claude-code-box;
         smoke-test = pkgs.claude-smoke-test;
         toplevel = self.nixosConfigurations.claude-box.config.system.build.toplevel;
@@ -90,6 +96,8 @@
               p.nixos-anywhere
               p.git
               p.openssh
+              p.openssl
+              p.gh
             ];
           };
         }

@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Run on the Mac after bootstrap.sh, with the ZBOX booted from the NixOS ISO:
-#   nix develop ./box --command ./box/scripts/install.sh <installer-ip>
+# Run on the Mac after bootstrap.sh (setup.sh does both), with the ZBOX booted
+# from the claude-box installer ISO (or the stock NixOS minimal ISO):
+#   nix develop ./box --command ./box/scripts/install.sh [host]
+# host defaults to claude-installer.local (our ISO); for the stock ISO pass its IP.
 #
 # WIPES the internal SATA disk of the box and installs claude-box.
 set -euo pipefail
 
-ip="${1:?usage: install.sh <ip-of-the-booted-installer>}"
+ip="${1:-claude-installer.local}"
 cd "$(git rev-parse --show-toplevel)/box"
 
 key="${CLAUDE_BOX_SSH_KEY:-$HOME/.ssh/id_ed25519_claude-box_zodiac}"
@@ -19,11 +21,20 @@ if [ -n "$(git status --porcelain .)" ]; then
   echo "box/ has uncommitted changes - commit and push first, the box will pull from GitHub." >&2
   exit 1
 fi
+git fetch -q origin
+if [ -n "$(git rev-list '@{u}..HEAD')" ]; then
+  echo "Local commits are not pushed yet - run 'git push' first, the box will pull from GitHub." >&2
+  exit 1
+fi
 
 installer_ssh=(-i "$key" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR)
 
-echo "==> Authorising your key on the installer (enter the password you set with 'passwd')"
-ssh-copy-id -i "$key.pub" "${installer_ssh[@]}" "root@$ip" >/dev/null
+if ssh "${installer_ssh[@]}" -o BatchMode=yes -o ConnectTimeout=10 "root@$ip" true 2>/dev/null; then
+  echo "==> Installer accepts your key"
+else
+  echo "==> Authorising your key on the installer (enter the password you set with 'passwd')"
+  ssh-copy-id -i "$key.pub" "${installer_ssh[@]}" "root@$ip" >/dev/null
+fi
 
 echo "==> Checking the target disk"
 disks=$(ssh "${installer_ssh[@]}" "root@$ip" lsblk -dnbo NAME,TRAN,RM,SIZE,MODEL)
@@ -50,8 +61,7 @@ nixos-anywhere \
 
 echo "==> Trusting the box's host key"
 ssh-keygen -R claude-box.local >/dev/null 2>&1 || true
-ssh-keygen -R "$ip" >/dev/null 2>&1 || true
-echo "claude-box.local,$ip $(cut -d' ' -f1,2 "$pubkey")" >> "$HOME/.ssh/known_hosts"
+echo "claude-box.local $(cut -d' ' -f1,2 "$pubkey")" >> "$HOME/.ssh/known_hosts"
 
 if ! grep -q "^Host claude-box$" "$HOME/.ssh/config" 2>/dev/null; then
   cat >> "$HOME/.ssh/config" <<EOF

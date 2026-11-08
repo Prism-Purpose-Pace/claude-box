@@ -1,0 +1,50 @@
+# Builds the claude-box installer ISO and publishes it as the GitHub release
+# "installer" (stable download URL, used by box/scripts/flash-usb.sh).
+# The ISO contains only public data: your SSH public key and stock NixOS.
+name: installer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'box/installer/**'
+      - 'box/hosts/claude-box/authorized_keys'
+      - 'box/flake.lock'
+      - '.github/workflows/installer.yaml'
+  schedule:
+    - cron: '41 4 1 * *' # monthly refresh, so a fresh install starts from a current kernel
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  iso:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # publishes the release asset
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-nix
+
+      - name: Build ISO
+        run: |
+          iso=$(nix build --no-link --print-out-paths ./box#installer-iso)
+          mkdir -p out
+          cp "$iso"/iso/claude-box-installer.iso out/
+          (cd out && sha256sum claude-box-installer.iso > claude-box-installer.iso.sha256)
+          cat out/claude-box-installer.iso.sha256
+
+      - name: Publish release "installer"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="Installer ISO for claude-box, built from ${GITHUB_SHA::7}. Flash with box/scripts/flash-usb.sh."
+          if gh release view installer >/dev/null 2>&1; then
+            gh release upload installer out/* --clobber
+            gh release edit installer --notes "$notes"
+          else
+            gh release create installer out/* --title "claude-box installer" --notes "$notes" --latest=false
+          fi

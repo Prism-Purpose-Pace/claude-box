@@ -15,12 +15,17 @@ box.yaml (every 6 h; Mondays also nixpkgs/disko/sops-nix)
    ├─ build the whole system, run the NixOS VM test
    ├─ prune versions/ to the newest 20
    └─ commit to main
+nixos-release.yaml (Tuesdays)  next NixOS release (YY.05/YY.11) once out: build + VM test → commit
+installer.yaml (monthly / on change)  installer ISO → GitHub release "installer"
         │
 claude-box-upgrade.timer (daily ~04:30, catches up after downtime)
    ├─ build main from GitHub (binaries from cache.nixos.org)
    ├─ smoke test of the NEW Claude Code on the REAL N3150 (local mock API, no tokens)
    ├─ switch; if switching fails, roll back to the previous generation
    └─ reboot only if the kernel changed
+claude-box-token-check.timer (monthly)  one real prompt with the stored token
+
+failures on the box → ntfy push to your phone; failures in CI → GitHub mail
 ```
 
 **What the two gates can and cannot do.** The CI gate is an early warning:
@@ -38,31 +43,22 @@ problems that only appear later at runtime; for those, roll back (see below).
 | `flake.nix`                                 | host config, packages `claude` / `smoke-test` / `toplevel`, VM test, Mac dev shell |
 | `claude-version` / `claude-rejected`        | deployed version / last version rejected by CI (both written by CI)                |
 | `hosts/claude-box/`                         | hardware, disk layout, SSH keys, host settings                                     |
-| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access                   |
+| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access, notifications    |
+| `installer/`                                | installer ISO (your key preset, `claude-installer.local`)                          |
 | `pkgs/`                                     | smoke test + mock Messages API                                                     |
 | `tests/vm.nix`                              | VM test run by CI                                                                  |
-| `scripts/`                                  | `bootstrap.sh`, `install.sh` (run on the Mac)                                      |
+| `scripts/`                                  | Mac: `setup.sh` (= `bootstrap.sh` + `install.sh`), `flash-usb.sh`, `repo-setup.sh` |
 | `secrets/secrets.yaml`                      | sops-encrypted to the box's SSH host key, created by `bootstrap.sh`                |
 
 ## First install
 
-One-time prerequisites:
-
-- **GitHub:** Actions enabled for this repository (scheduled workflows are what keeps it maintenance-free).
-- **Mac:** Nix installed; SSH key `~/.ssh/id_ed25519_claude-box_zodiac` in the Keychain
-  (`ssh-add --apple-use-keychain …`); its public half is in `hosts/claude-box/authorized_keys`.
-- **ZBOX BIOS:** UEFI boot, Secure Boot off, "power on after AC loss" on; LAN cable connected.
-- **ZBOX:** booted from the NixOS minimal ISO, root password set with `passwd`, IP noted from `ip a`.
+Step by step, with BIOS settings and troubleshooting: **[SETUP.md](SETUP.md)**. In short:
 
 ```sh
-git clone git@github.com:Prism-Purpose-Pace/claude-box.git && cd claude-box
-nix develop ./box --command ./box/scripts/bootstrap.sh       # asks for the `claude setup-token` output, commits + pushes
-nix develop ./box --command ./box/scripts/install.sh <IP>    # checks the disk, asks for YES, wipes /dev/sda, installs
+nix develop ./box --command ./box/scripts/repo-setup.sh   # GitHub settings, once
+./box/scripts/flash-usb.sh                                # installer onto a USB stick
+nix develop ./box --command ./box/scripts/setup.sh        # secrets, wait for the box, install, verify
 ```
-
-`install.sh` adds `claude-box` / `claude-box-admin` to `~/.ssh/config` and the host key
-to `known_hosts`, then verifies `claude --version`, the smoke test, one real prompt and
-the upgrade timer. Finally it deletes the box's private host key from the Mac.
 
 ## Daily use
 
@@ -84,6 +80,7 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 | Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                     |
 | Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history`, `journalctl -u claude-box-upgrade`                         |
 | Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)  |
+| Test notifications          | `ssh claude-box-admin claude-box-notify "claude-box" "test"`                                                       |
 | Box not reachable           | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting)           |
 
 ## Security model

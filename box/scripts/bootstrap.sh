@@ -52,11 +52,16 @@ echo
 [ -n "$token" ] || { echo "Token is required." >&2; exit 1; }
 read -r -s -p "NetBird setup key (empty = no NetBird): " netbird
 echo
+read -r -p "ntfy topic for push notifications (empty = generate a new one): " topic
+if [ -z "$topic" ]; then
+  topic="claude-box-$(openssl rand -hex 12)"
+fi
 
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 chmod 600 "$tmp"
 printf "claude_oauth_token: '%s'\n" "$token" > "$tmp"
+printf "ntfy_topic: '%s'\n" "$topic" >> "$tmp"
 if [ -n "$netbird" ]; then
   printf "netbird_setup_key: '%s'\n" "$netbird" >> "$tmp"
 fi
@@ -75,3 +80,8 @@ else
   git push -q
   echo "Committed and pushed. CI now builds and tests the configuration."
 fi
+
+echo
+echo "Notifications: install the ntfy app (iOS/Android) and subscribe to the topic"
+echo "    $topic"
+echo "(server ntfy.sh). Keep the name private, it is the only access control."

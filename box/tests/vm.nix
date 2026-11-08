@@ -14,6 +14,7 @@ pkgs.testers.runNixOSTest {
         ../modules/claude.nix
         ../modules/auto-upgrade.nix
         ../modules/remote-access.nix
+        ../modules/notify.nix
       ];
       nixpkgs.overlays = self.nixosConfigurations.claude-box.config.nixpkgs.overlays;
       nixpkgs.config.allowUnfreePredicate = _: true;
@@ -21,6 +22,26 @@ pkgs.testers.runNixOSTest {
         sshKeys = [ (builtins.readFile ../hosts/claude-box/authorized_keys) ];
         hasSecrets = lib.mkForce false;
         upgrade.flake = "path:/nonexistent";
+        notify = {
+          enable = true;
+          server = "http://127.0.0.1:8099";
+          topicFile = "${pkgs.writeText "topic" "vm-test-topic"}";
+        };
+      };
+      # Stand-in for ntfy.sh: records every request.
+      systemd.services.fake-ntfy = {
+        wantedBy = [ "multi-user.target" ];
+        script = ''
+          ${pkgs.python3}/bin/python3 -c '
+          import http.server
+          class H(http.server.BaseHTTPRequestHandler):
+              def do_POST(self):
+                  body = self.rfile.read(int(self.headers["content-length"] or 0))
+                  open("/tmp/ntfy.log", "a").write(self.path + " " + self.headers["Title"] + "\n")
+                  self.send_response(200); self.end_headers()
+          http.server.HTTPServer(("127.0.0.1", 8099), H).serve_forever()
+          '
+        '';
       };
       boot.loader.systemd-boot.enable = lib.mkForce false;
       boot.loader.efi.canTouchEfiVariables = lib.mkForce false;
@@ -37,5 +58,11 @@ pkgs.testers.runNixOSTest {
     box.succeed("su - claude -c 'jq -e .hasCompletedOnboarding ~/.claude.json'")
     print(box.succeed("runuser -u nobody -- claude-smoke-test /run/current-system/claude-code/bin/claude"))
     box.succeed("systemctl list-timers | grep -q claude-box-upgrade")
+    box.succeed("systemctl list-timers | grep -q claude-box-token-check")
+
+    # A failing upgrade (unreachable flake) must end up as a push notification.
+    box.wait_for_unit("fake-ntfy.service")
+    box.fail("systemctl start claude-box-upgrade.service")
+    box.wait_until_succeeds("grep -q 'vm-test-topic claude-box: claude-box-upgrade.service failed' /tmp/ntfy.log", timeout=120)
   '';
 }

@@ -7,6 +7,7 @@
     ../../modules/claude.nix
     ../../modules/auto-upgrade.nix
     ../../modules/remote-access.nix
+    ../../modules/notify.nix
   ];
 
   networking.hostName = "claude-box";
