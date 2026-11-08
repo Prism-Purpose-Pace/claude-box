@@ -24,7 +24,9 @@ let
     set -eu
     cd ${../home/claude}
     find . -type f | while read -r f; do
-      [ -e "$HOME/$f" ] || install -D -m 0644 "$f" "$HOME/$f"
+      [ -e "$HOME/$f" ] && continue
+      if [ -x "$f" ]; then mode=0755; else mode=0644; fi
+      install -D -m "$mode" "$f" "$HOME/$f"
     done
   '';
 

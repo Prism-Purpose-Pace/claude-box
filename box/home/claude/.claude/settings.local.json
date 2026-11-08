@@ -1,0 +1,9 @@
+{
+	"sandbox": {
+		"enabled": true,
+		"autoAllowBashIfSandboxed": true
+	},
+	"spinnerTipsEnabled": false,
+	"prefersReducedMotion": true,
+	"outputStyle": "Concise"
+}
