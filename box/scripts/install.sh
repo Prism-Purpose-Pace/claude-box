@@ -12,12 +12,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 ip="${1:-claude-installer.local}"
 cd "$(git rev-parse --show-toplevel)/box"
 
-key="${CLAUDE_BOX_SSH_KEY:-$HOME/.ssh/id_ed25519_claude-box_zodiac}"
-keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
-pubkey="hosts/claude-box/ssh_host_ed25519_key.pub"
 min_disk=$((60 * 1000 * 1000 * 1000))
 
-[ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ] || { echo "No host key in $keydir - run bootstrap.sh first." >&2; exit 1; }
+[ -f "$hostkey" ] || { echo "No host key in $keydir - run bootstrap.sh first." >&2; exit 1; }
 [ -f secrets/secrets.yaml ] || { echo "No secrets - run bootstrap.sh first." >&2; exit 1; }
 # Whole repository: the box flake also builds ../package.nix and ../versions/.
 if [ -n "$(git status --porcelain -- :/)" ]; then

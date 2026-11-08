@@ -13,8 +13,6 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 cd "$(git rev-parse --show-toplevel)/box"
-key="${CLAUDE_BOX_SSH_KEY:-$HOME/.ssh/id_ed25519_claude-box_zodiac}"
-keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
 installer="${CLAUDE_BOX_INSTALLER:-claude-installer.local}"
 
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -38,9 +36,15 @@ git pull -q --ff-only || fail "Could not fast-forward to origin/main - resolve t
 echo "OK: key, Keychain, repository up to date"
 
 step "2/4 Host key and secrets"
-if [ -f secrets/secrets.yaml ] && [ -f hosts/claude-box/ssh_host_ed25519_key.pub ] \
-  && [ -f "$keydir/etc/ssh/ssh_host_ed25519_key" ]; then
+if [ -f secrets/secrets.yaml ] && [ -f "$pubkey" ] && [ -f "$hostkey" ]; then
   echo "Already there (rotate later with: ./box/scripts/bootstrap.sh --secrets)"
+elif [ -f secrets/secrets.yaml ] && [ -f "$pubkey" ]; then
+  # install.sh deletes the private host key after a successful install. A new
+  # one would lock the running box out of its secrets, so only on request.
+  fail "claude-box is already installed (its private host key was removed from this Mac).
+Nothing to do. To reinstall from scratch run:
+  ./box/scripts/bootstrap.sh --new-host-key
+then re-run this script."
 else
   ./scripts/bootstrap.sh
 fi

@@ -70,18 +70,25 @@ jobs:
             echo "Testing Claude Code $candidate (box currently on $current)"
           fi
 
+      # Build failures and smoke-test exit 2 (harness failed) fail the run
+      # without rejecting the candidate; only exit 1 (Claude Code failed) does.
       - name: Smoke test on emulated CPU without AVX
         id: smoke
-        continue-on-error: true
         run: |
           qemu=$(nix build --no-link --print-out-paths --inputs-from ./box nixpkgs#qemu-user)
           claude=$(nix build --no-link --print-out-paths ./box#claude)
           smoke=$(nix build --no-link --print-out-paths ./box#smoke-test)
+          rc=0
           SMOKE_PREFIX="$qemu/bin/qemu-x86_64 -cpu Westmere" \
-            "$smoke/bin/claude-smoke-test" "$claude/bin/.claude-wrapped"
+            "$smoke/bin/claude-smoke-test" "$claude/bin/.claude-wrapped" || rc=$?
+          case "$rc" in
+            0) echo "rejected=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "rejected=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Smoke test harness failed (exit $rc), retrying next run"; exit "$rc" ;;
+          esac
 
       - name: Keep previous Claude Code version
-        if: steps.smoke.outcome == 'failure'
+        if: steps.smoke.outputs.rejected == 'true'
         env:
           CANDIDATE: ${{ steps.candidate.outputs.candidate }}
           CURRENT: ${{ steps.candidate.outputs.current }}
@@ -127,5 +134,5 @@ jobs:
           exit 1
 
       - name: Report rejected version
-        if: steps.smoke.outcome == 'failure'
+        if: steps.smoke.outputs.rejected == 'true'
         run: exit 1 # failed run => GitHub notification mail

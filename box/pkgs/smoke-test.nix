@@ -2,8 +2,9 @@
 #
 # Runs one complete headless turn (`claude -p`) against a local mock of the
 # Messages API. No token or network is needed, no usage is billed. Exit 0 only
-# if Claude Code starts, sends a request and prints the mocked answer; exit 2
-# if the mock API itself could not start.
+# if Claude Code starts, sends a request and prints the mocked answer; exit 1
+# if Claude Code failed; exit 2 if the harness itself failed (temp dir, mock
+# API), which says nothing about the Claude Code build.
 #
 # SMOKE_PREFIX is prepended to the command, e.g. "qemu-x86_64 -cpu Westmere"
 # to emulate a CPU without AVX in CI.
@@ -22,24 +23,29 @@ writeShellApplication {
   ];
   text = ''
     claude_bin="''${1:-claude}"
-    work=$(mktemp -d)
+    harness_fail() {
+      echo "claude-smoke-test: harness failed: $*" >&2
+      exit 2
+    }
+    mock_pid=""
+    work=$(mktemp -d) || harness_fail "mktemp"
     trap 'kill "$mock_pid" 2>/dev/null || true; rm -rf "$work"' EXIT
 
     # The mock binds a free port itself and prints it once it is listening.
+    # Create the file first: the background job opens it only after the fork.
+    : >"$work/port" || harness_fail "cannot write to $work"
     python3 -I ${./mock-anthropic-api.py} >"$work/port" 2>"$work/mock.log" &
     mock_pid=$!
     port=""
     for _ in $(seq 150); do
-      port=$(cat "$work/port")
+      port=$(cat "$work/port" 2>/dev/null || true)
       [ -n "$port" ] && break
       kill -0 "$mock_pid" 2>/dev/null || break
       sleep 0.2
     done
     if [ -z "$port" ]; then
-      # Exit 2: the harness failed, not Claude Code.
-      echo "claude-smoke-test: mock API did not start" >&2
-      tail -20 "$work/mock.log" >&2
-      exit 2
+      tail -20 "$work/mock.log" >&2 || true
+      harness_fail "mock API did not start"
     fi
 
     rc=0

@@ -2,6 +2,7 @@
 # Run on the Mac, from anywhere inside the repo:
 #   nix develop ./box --command ./box/scripts/bootstrap.sh            # first time
 #   nix develop ./box --command ./box/scripts/bootstrap.sh --secrets  # rotate token later
+#   nix develop ./box --command ./box/scripts/bootstrap.sh --new-host-key  # reinstall
 #
 # 1. Creates the SSH host key of the box ON THE MAC (only the public half is
 #    committed; the private half is copied onto the box by install.sh and then
@@ -10,23 +11,33 @@
 # 3. Asks for the secrets and commits them encrypted to secrets/secrets.yaml.
 #    Plaintext never touches the repository directory.
 set -euo pipefail
+# shellcheck source=lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 cd "$(git rev-parse --show-toplevel)/box"
 
-keydir="${CLAUDE_BOX_KEYDIR:-$HOME/.config/claude-box/install-root}"
-hostkey="$keydir/etc/ssh/ssh_host_ed25519_key"
-pubkey="hosts/claude-box/ssh_host_ed25519_key.pub"
-
 rotate=false
-[ "${1:-}" = "--secrets" ] && rotate=true
+new_host_key=false
+case "${1:-}" in
+  "") ;;
+  --secrets) rotate=true ;;
+  --new-host-key) new_host_key=true ;;
+  *) echo "Usage: $0 [--secrets | --new-host-key]" >&2; exit 1 ;;
+esac
 
 if ! $rotate; then
   if [ -f "$hostkey" ]; then
     echo "Host key already exists ($hostkey) - keeping it."
   else
-    # No private half: first install, or a reinstall after install.sh deleted
-    # it. A new key needs the secrets re-encrypted, which happens below.
-    [ -f "$pubkey" ] && echo "Private host key is gone (deleted after the last install) - creating a new one."
+    # No private half but a committed public one: install.sh deleted it after
+    # installing. A new key re-encrypts the secrets to it and pushes them, so
+    # the running box can no longer decrypt its secrets until it is reinstalled.
+    if [ -f "$pubkey" ] && ! $new_host_key; then
+      echo "claude-box is already installed (private host key removed after install)." >&2
+      echo "Rotate secrets:  $0 --secrets" >&2
+      echo "Reinstall:       $0 --new-host-key  (the running box loses its secrets)" >&2
+      exit 1
+    fi
     # Parent is private; the tree itself keeps normal modes because
     # nixos-anywhere copies it verbatim onto the root of the new system.
     mkdir -p "$(dirname "$keydir")"
@@ -68,7 +79,8 @@ old_topic=$(current_secret ntfy_topic)
 read -r -s -p "NetBird setup key (empty = ${old_netbird:+keep the current one}${old_netbird:-no NetBird}): " netbird
 echo
 netbird="${netbird:-$old_netbird}"
-if [ -z "$netbird" ] && grep -Eq '^[[:space:]]*remoteAccess = "netbird"' hosts/claude-box/configuration.nix; then
+remote_access=$(nix eval --raw .#nixosConfigurations.claude-box.config.box.remoteAccess)
+if [ -z "$netbird" ] && [ "$remote_access" = netbird ]; then
   echo "remoteAccess is \"netbird\" - a NetBird setup key is required." >&2
   exit 1
 fi
