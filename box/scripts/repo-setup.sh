@@ -35,5 +35,6 @@ cat <<TXT
 
 Done. One step needs your browser (GitHub asks for confirmation):
   Install Renovate for $repo:  https://github.com/apps/renovate
-It then keeps pinned GitHub Actions and the root flake.lock current, with automerge.
+It then keeps pinned GitHub Actions and the flake.lock files current. Lock files are
+merged automatically; GitHub Actions updates wait for your review (main is root on the box).
 TXT
