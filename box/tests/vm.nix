@@ -56,6 +56,7 @@ pkgs.testers.runNixOSTest {
     box.succeed("id -nG admin | grep -qw wheel")
     print(box.succeed("su - claude -c 'claude --version'"))
     box.succeed("su - claude -c 'jq -e .hasCompletedOnboarding ~/.claude.json'")
+    box.wait_for_unit("claude-seed-home.service")
     box.succeed("su - claude -c 'jq -e .permissions ~/.claude/settings.json'")
     box.succeed("su - claude -c 'test -O ~/.config/herdr/config.toml'")
     print(box.succeed("su - claude -c 'herdr --version'"))

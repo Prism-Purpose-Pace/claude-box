@@ -20,8 +20,6 @@ let
   # Starting configuration of the claude user (Claude Code settings, herdr
   # config), copied from box/home/claude only where a file does not exist yet:
   # changes made on the box are kept, and a reinstall gets the same setup.
-  # writeShellApplication sets PATH itself: runuser resets it to
-  # /usr/bin:/bin, which does not exist on NixOS.
   seedHome = pkgs.writeShellApplication {
     name = "claude-seed-home";
     runtimeInputs = [
@@ -108,11 +106,25 @@ in
       if [ -d /home/claude ] && [ ! -e /home/claude/.claude.json ]; then
         install -m 0600 -o claude -g users ${onboarding} /home/claude/.claude.json
       fi
-      if [ -d /home/claude ]; then
-        ${pkgs.util-linux}/bin/runuser -u claude -- ${pkgs.coreutils}/bin/env HOME=/home/claude ${lib.getExe seedHome} \
-          || echo "warning: could not seed /home/claude from box/home/claude" >&2
-      fi
     '';
+  };
+
+  # A service rather than part of the activation script: activation can run in
+  # the initrd, where there is no PAM configuration and runuser aborts. systemd
+  # switches to the user itself, and running as claude (not root) means a
+  # symlink planted in the home directory cannot redirect a root-owned write.
+  systemd.services.claude-seed-home = {
+    description = "Copy missing starting configuration into /home/claude";
+    wantedBy = [ "multi-user.target" ];
+    before = [ "multi-user.target" ];
+    unitConfig.RequiresMountsFor = "/home/claude";
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      User = "claude";
+      Group = "users";
+      ExecStart = lib.getExe seedHome;
+    };
   };
 
   sops.secrets.claude_oauth_token = lib.mkIf config.box.hasSecrets {
