@@ -27,8 +27,8 @@ pkgs.testers.runNixOSTest {
   testScript = ''
     box.wait_for_unit("multi-user.target")
     box.wait_for_unit("sshd.service")
-    box.succeed("sshd -T | grep -qx 'passwordauthentication no'")
-    box.succeed("sshd -T | grep -qx 'permitrootlogin no'")
+    box.succeed("grep -qx 'PasswordAuthentication no' /etc/ssh/sshd_config")
+    box.succeed("grep -qx 'PermitRootLogin no' /etc/ssh/sshd_config")
     box.fail("id -nG claude | grep -qw wheel")
     box.succeed("id -nG admin | grep -qw wheel")
     print(box.succeed("su - claude -c 'claude --version'"))
