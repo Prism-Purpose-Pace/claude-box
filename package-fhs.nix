@@ -14,10 +14,16 @@ buildFHSEnv {
   # `stdenv.cc.cc.lib` and `zlib` are also in claude-code's buildInputs, but
   # they must be present in the FHS root so that *runtime-downloaded* binaries
   # (which are not autoPatchelf'd) can resolve them via the standard loader.
+  #
+  # `bubblewrap` and `socat` are what Claude Code's sandbox (/sandbox) needs on
+  # Linux. They go into the FHS root rather than the system profile so the
+  # sandbox finds them in /usr/bin whatever PATH the caller passes in.
   targetPkgs = pkgs: [
     claude-code
     pkgs.stdenv.cc.cc.lib
     pkgs.zlib
+    pkgs.bubblewrap
+    pkgs.socat
   ];
 
   runScript = lib.getExe claude-code;
