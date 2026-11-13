@@ -14,6 +14,12 @@
       url = "git+https://github.com/Mic92/sops-nix?shallow=1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Terminal workspace for coding agents. Pinned to a release tag, so the
+    # weekly `nix flake update` keeps it; bump the tag by hand. It keeps its own
+    # nixpkgs (needs zig 0.16 + rust-overlay). Not in cache.nixos.org: the box
+    # compiles it itself, which also keeps its Zig/SIMD code matched to the
+    # N3150 (no AVX). The upgrade gate runs it before switching.
+    herdr.url = "github:herdrdev/herdr/v0.9.5";
   };
 
   outputs =
@@ -22,6 +28,7 @@
       nixpkgs,
       disko,
       sops-nix,
+      herdr,
     }:
     let
       system = "x86_64-linux";
@@ -46,6 +53,7 @@
           claude-code = final.claude-code-box;
         };
         claude-smoke-test = final.callPackage ./pkgs/smoke-test.nix { };
+        herdr = herdr.packages.${final.stdenv.hostPlatform.system}.default;
       };
 
       pkgsFor =
@@ -78,6 +86,7 @@
         installer-iso = self.nixosConfigurations.installer.config.system.build.isoImage;
         claude = pkgs.claude-code-box;
         smoke-test = pkgs.claude-smoke-test;
+        inherit (pkgs) herdr;
         toplevel = self.nixosConfigurations.claude-box.config.system.build.toplevel;
         default = self.packages.${system}.toplevel;
       };

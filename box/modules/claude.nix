@@ -17,6 +17,55 @@ let
     exec ${pkgs.claude-code-box-fhs}/bin/claude "$@"
   '';
 
+  # Starting configuration of the claude user (Claude Code settings, herdr
+  # config), copied from box/home/claude only where a file does not exist yet:
+  # changes made on the box are kept, and a reinstall gets the same setup.
+  seedHome = pkgs.writeShellApplication {
+    name = "claude-seed-home";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.findutils
+    ];
+    text = ''
+      cd ${../home/claude}
+      find . -type f | while read -r f; do
+        [ -e "$HOME/$f" ] && continue
+        if [ -x "$f" ]; then mode=0755; else mode=0644; fi
+        install -D -m "$mode" "$f" "$HOME/$f"
+      done
+    '';
+  };
+
+  # herdr plugins to install after a (re)install. Not done on activation:
+  # herdr shows a trust preview (commit, build commands, hooks) that you
+  # approve per plugin, and third-party code should not run without that.
+  herdrPlugins = [
+    "persiyanov/herdr-reviewr"
+    "tdi/herdr-worktree-setup"
+  ];
+  herdrPluginInstaller = pkgs.writeShellApplication {
+    name = "claude-box-herdr-plugins";
+    runtimeInputs = [
+      pkgs.herdr
+      pkgs.jq
+    ];
+    text = ''
+      [ "$(id -un)" = claude ] || {
+        echo "Run this as user claude (ssh claude-box)." >&2
+        exit 1
+      }
+      registry="$HOME/.config/herdr/plugins.json"
+      for p in ${lib.escapeShellArgs herdrPlugins}; do
+        if [ -f "$registry" ] && jq -e --arg o "''${p%%/*}" --arg r "''${p#*/}" \
+          'any(.[]; .source.owner == $o and .source.repo == $r)' "$registry" >/dev/null; then
+          echo "already installed: $p"
+          continue
+        fi
+        herdr plugin install "$p"
+      done
+    '';
+  };
+
   # Skip the first-run wizard so headless use works on a fresh box.
   onboarding = pkgs.writeText "claude.json" (
     builtins.toJSON {
@@ -36,10 +85,12 @@ in
 
   environment.systemPackages = [
     claude
+    herdrPluginInstaller
     pkgs.claude-smoke-test
   ]
   ++ (with pkgs; [
     tmux
+    herdr
     gh
     git
     ripgrep
@@ -56,6 +107,24 @@ in
         install -m 0600 -o claude -g users ${onboarding} /home/claude/.claude.json
       fi
     '';
+  };
+
+  # A service rather than part of the activation script: activation can run in
+  # the initrd, where there is no PAM configuration and runuser aborts. systemd
+  # switches to the user itself, and running as claude (not root) means a
+  # symlink planted in the home directory cannot redirect a root-owned write.
+  systemd.services.claude-seed-home = {
+    description = "Copy missing starting configuration into /home/claude";
+    wantedBy = [ "multi-user.target" ];
+    before = [ "multi-user.target" ];
+    unitConfig.RequiresMountsFor = "/home/claude";
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      User = "claude";
+      Group = "users";
+      ExecStart = lib.getExe seedHome;
+    };
   };
 
   sops.secrets.claude_oauth_token = lib.mkIf config.box.hasSecrets {

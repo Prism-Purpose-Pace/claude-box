@@ -1,0 +1,72 @@
+{
+	"permissions": {
+		"defaultMode": "auto"
+	},
+	"hooks": {
+		"SessionStart": [
+			{
+				"matcher": "^(startup|resume|clear|compact|fork)$",
+				"hooks": [
+					{
+						"type": "command",
+						"command": "bash '/home/claude/.claude/hooks/herdr-agent-state.sh' session",
+						"timeout": 10
+					}
+				]
+			}
+		]
+	},
+	"statusLine": {
+		"type": "command",
+		"command": "bash /home/claude/.claude/statusline-command.sh"
+	},
+	"worktree": {
+		"baseRef": "head"
+	},
+	"enableArtifact": false,
+	"enableWorkflows": false,
+	"workflowKeywordTriggerEnabled": false,
+	"feedbackDrafts": "off",
+	"promptSuggestionEnabled": false,
+	"timeFormat": "24-hour-utc",
+	"verbose": true,
+	"remoteControlAtStartup": false,
+	"inputNeededNotifEnabled": true,
+	"agentPushNotifEnabled": true,
+	"useAutoModeDuringPlan": true,
+	"autoMode": {
+		"environment": [
+			"### Org-wide",
+			"**Organization**: None configured",
+			"**Cloud provider(s)**: None configured",
+			"**Repository visibility**: assume private unless the remote host and repo name indicate otherwise, or a visibility check in the transcript shows public",
+			"**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+			"**Secrets management**: None configured",
+			"**Default / protected branches**: unknown — no git remotes configured, origin/HEAD unset, and repo/branch protection was not queryable (no derivable owner/repo)",
+			"**CI/CD deploy targets**: None configured",
+			"**Network posture**: None configured",
+			"**Host containment**: None configured — assume Claude Code runs on an ordinary developer machine or CI runner with open internet",
+			"**Source control**: The trusted repo and its remote(s) only (no additional orgs configured) — no remotes are currently configured for this repo",
+			"**Trusted internal domains**: None configured",
+			"**Trusted cloud buckets**: None configured",
+			"**Key internal services**: None configured",
+			"**Internal package registry**: None configured",
+			"**Sensitive data locations & audiences**: any file or store holding personal data, confidential business data, credentials, regulated data, or similarly sensitive material; preserve exact handles when known and share only with audiences cleared at the [named+specifics] bar",
+			"**Data retention / declassification**: None configured",
+			"**Sensitive remote targets**: any namespace, host, or container whose name carries prod or production as a whole word or name segment",
+			"**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic",
+			"**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries prod or production as a whole word or name segment",
+			"### User-specific",
+			"**Primary use of Claude Code**: software development",
+			"**Trusted repo**: The git repository the agent started in (/home/claude) and its configured remote(s) — currently no remotes are configured and no files are tracked",
+			"**Org-specific CLIs**: None configured"
+		]
+	},
+	"pluginConfigs": {
+		"cc-plugin-agents-md@builtin": {
+			"options": {
+				"instructionFiles": "claude-md-or-agents-md"
+			}
+		}
+	}
+}

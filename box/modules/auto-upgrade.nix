@@ -3,7 +3,8 @@
 #   1. build the latest config from GitHub (substituted from cache.nixos.org,
 #      only the small Claude wrapper is built locally)
 #   2. run a full headless Claude Code turn with the NEW binary on THIS CPU
-#      against a local mock API; abort if it crashes (e.g. AVX regression)
+#      against a local mock API; abort if it crashes (e.g. AVX regression);
+#      likewise abort if the new herdr does not start
 #   3. switch; if switching fails, roll back to the previous generation
 #   4. reboot only if kernel/initrd changed
 {
@@ -47,6 +48,12 @@ let
       elif [ "$rc" -ne 0 ]; then
         echo "$(date -Is) REJECTED $new (smoke test failed)" >> "$state/history"
         echo "Smoke test failed, keeping $cur" >&2
+        exit 1
+      fi
+      # herdr is compiled on the box (Zig with SIMD); make sure it starts here.
+      if [ -x "$new/sw/bin/herdr" ] && ! runuser -u nobody -- "$new/sw/bin/herdr" --version; then
+        echo "$(date -Is) REJECTED $new (herdr does not start)" >> "$state/history"
+        echo "herdr does not start, keeping $cur" >&2
         exit 1
       fi
 

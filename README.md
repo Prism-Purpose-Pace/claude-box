@@ -23,7 +23,7 @@ nix run github:Prism-Purpose-Pace/claude-box#stable     # upstream `stable` chan
 | -------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `claude` (default), `latest`, `stable` | Claude Code with `gh` and `pdftotext` on `PATH`                                            |
 | `claude-minimal`, `stable-minimal`     | the binary only                                                                            |
-| `*-fhs` (Linux)                        | FHS wrapper, needed for agent teams                                                        |
+| `*-fhs` (Linux)                        | FHS wrapper for agent teams and `/sandbox` (bubblewrap, socat)                             |
 | `<version>`, e.g. `2.1.319`            | one of the archived versions in `versions/`                                                |
 | `overlays.default`                     | `claude-code`, `claude-code-minimal`, `claude-code-fhs`, `claude-code-minimal-fhs` (Linux) |
 

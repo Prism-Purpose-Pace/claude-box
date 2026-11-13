@@ -26,6 +26,7 @@ claude-box-upgrade.timer (daily ~04:30, catches up after downtime)
    ├─ switch; if switching fails, roll back to the previous generation
    └─ reboot only if the kernel changed
 claude-box-token-check.timer (monthly)  one real prompt with the stored token
+claude-box-watch.timer (every 5 min)    OOM/oomd kills, task limit, sustained CPU, disk → ntfy
 
 failures on the box → ntfy push to your phone; failures in CI → GitHub mail
 ```
@@ -45,10 +46,12 @@ problems that only appear later at runtime; for those, roll back (see below).
 | `flake.nix`                                 | host config, packages `claude` / `smoke-test` / `toplevel`, VM test, Mac dev shell                             |
 | `claude-version` / `claude-rejected`        | deployed version / last version rejected by CI (both written by CI)                                            |
 | `hosts/claude-box/`                         | hardware, disk layout, SSH keys, host settings                                                                 |
-| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access, notifications                                |
+| `modules/`                                  | base system, `claude` user, self-testing upgrades, remote access, notifications, hardening, monitoring         |
+| `home/claude/`                              | starting config of user `claude` (Claude Code settings, herdr), copied if missing                              |
 | `installer/`                                | installer ISO (your key preset, `claude-installer.local`)                                                      |
 | `pkgs/`                                     | smoke test + mock Messages API                                                                                 |
-| `tests/vm.nix`                              | VM test run by CI                                                                                              |
+| `tests/vm.nix`                              | VM test run by CI, including the measures in `SECURITY.md`                                                     |
+| `SECURITY.md`                               | threat model, assumptions, containment and monitoring of Claude Code                                           |
 | `scripts/`                                  | Mac: `setup.sh` (= `bootstrap.sh` + `install.sh`), `flash-usb.sh`, `repo-setup.sh`; shared helpers in `lib.sh` |
 | `secrets/secrets.yaml`                      | sops-encrypted to the box's SSH host key, created by `bootstrap.sh`                                            |
 
@@ -86,15 +89,33 @@ The box is found as `claude-box.local` (mDNS), so DHCP address changes do not ma
 | Enable NetBird              | `bootstrap.sh --secrets` with a setup key, then `remoteAccess = "netbird"` in `hosts/claude-box/configuration.nix`                                                                 |
 | Reinstall from scratch      | `bootstrap.sh --new-host-key` (new host key, secrets re-encrypted), then `setup.sh`                                                                                                |
 | Upgrade now                 | `ssh claude-box-admin sudo systemctl start claude-box-upgrade`                                                                                                                     |
+| Update herdr                | bump the tag of the `herdr` input in `flake.nix`, then `nix flake lock ./box`; the box compiles it (takes a while on the N3150)                                                    |
+| herdr plugins (reinstall)   | `ssh claude-box -t claude-box-herdr-plugins` (list in `modules/claude.nix`; approve each trust preview)                                                                            |
 | Why was an upgrade skipped? | `ssh claude-box-admin cat /var/lib/claude-box/history` (`OK` / `REJECTED` / `SKIPPED` / `ROLLBACK`), `journalctl -u claude-box-upgrade`                                            |
 | Roll back                   | `ssh claude-box-admin sudo nixos-rebuild switch --rollback`, or pick a generation in the boot menu (last 10 kept)                                                                  |
-| Test notifications          | `ssh claude-box-admin claude-box-notify "claude-box" "test"`                                                                                                                       |
+| Test notifications          | `ssh claude-box-admin sudo claude-box-notify "claude-box" "test"`                                                                                                                  |
+| What did Claude run / use?  | `sudo ausearch --input-logs -i -k claude-exec --start today`, `sudo below replay -t "3h ago"`, `systemd-cgtop user.slice`; more in [SECURITY.md](SECURITY.md#9-operations)         |
+| Stop Claude immediately     | `ssh claude-box-admin 'sudo systemctl stop user-$(id -u claude).slice'` (kills every process of `claude`)                                                                          |
 | Box not reachable           | it is probably off or the Mac is outside the LAN; after a power cut it restarts by itself (BIOS setting)                                                                           |
 
 ## Security model
 
-- SSH keys only; no passwords exist on the system, root login is disabled.
+Threat model, assumptions and the reasoning behind the measures:
+**[SECURITY.md](SECURITY.md)**. In short:
+
+- SSH keys only, and only from the Nix configuration (`~/.ssh/authorized_keys`
+  is ignored); no passwords exist on the system, root login and agent
+  forwarding are disabled.
 - `claude` has no sudo. `admin` has passwordless sudo, protected by the SSH key.
+- Everything running as `claude` is treated as potentially hijacked (prompt
+  injection). Its slice has memory, CPU and task limits plus systemd-oomd, and
+  cannot reach the LAN, link-local, VPN or multicast addresses; the internet
+  and localhost stay reachable.
+- Every program `claude` executes is recorded by auditd in `/var/log/audit`
+  (root only); `below` keeps 14 days of per-cgroup resource history; a watchdog
+  pushes ntfy alerts on OOM kills, fork bombs, sustained full CPU and a filling disk.
+- Do not log in on the box with a GitHub identity that can push to this
+  repository: `main` is root on the box (SECURITY.md, O1).
 - Secrets are decrypted on the box with its SSH host key; only ciphertext is in Git.
 - The box pulls; nothing pushes to it, and no inbound port besides SSH (LAN) is open.
 - A push to `main` reaches the box as root within a day, so CI guards `main`:
