@@ -52,6 +52,7 @@ problems that only appear later at runtime; for those, roll back (see below).
 | `pkgs/`                                     | smoke test + mock Messages API                                                                                 |
 | `tests/vm.nix`                              | VM test run by CI, including the measures in `SECURITY.md`                                                     |
 | `SECURITY.md`                               | threat model, assumptions, containment and monitoring of Claude Code                                           |
+| `BACKLOG.md`                                | open work and owner decisions (issues are disabled in this repository)                                         |
 | `scripts/`                                  | Mac: `setup.sh` (= `bootstrap.sh` + `install.sh`), `flash-usb.sh`, `repo-setup.sh`; shared helpers in `lib.sh` |
 | `secrets/secrets.yaml`                      | sops-encrypted to the box's SSH host key, created by `bootstrap.sh`                                            |
 

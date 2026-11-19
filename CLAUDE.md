@@ -81,6 +81,8 @@ All of these workflows commit straight to `main`.
 | workflows                       | hooks (actionlint, zizmor offline); online zizmor runs in `security.yaml` |
 | docs                            | hooks (oxfmt, typos); keep README tables in sync with the code            |
 
+Pending work is tracked in `box/BACKLOG.md` (GitHub issues are disabled in this repository): add what you leave unfinished, and remove an entry in the change that resolves it.
+
 Mac-side scripts (`box/scripts/*.sh`) are interactive and touch real hardware, keys and GitHub settings: do not run them yourself.
 
 ## Gotchas
